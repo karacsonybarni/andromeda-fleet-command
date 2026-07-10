@@ -33,7 +33,8 @@ Ollama model and whisper.cpp.
 - Tagged CI workflow for checksummed Windows and Linux demo packages
 - Layered procedural stereo soundscape with varied weapon, impact, destruction, ability, alert,
   victory, and defeat cues (no licensed sample dependencies)
-- Continuous low-frequency engine-room ambience
+- Original looping synth soundtrack, “Signal Across Andromeda,” generated in-engine with a melodic
+  call-sign hook, evolving harmony, bass, arpeggios, and restrained electronic percussion
 - Deterministic fixed-step simulation suitable for replays and multiplayer
 - Automated parser, combat, mission, persistence, determinism, command, and endurance tests
 

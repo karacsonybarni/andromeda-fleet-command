@@ -19,7 +19,7 @@
 - [x] Three playable missions with escalating objectives and command complexity
 - [ ] Tune each mission to 8–12 minutes using external playtest data
 - [x] Procedural acknowledgements, weapons, abilities, tactical alerts, and victory cues
-- [x] Continuous procedural engine-room ambience
+- [x] Original seamless background theme with a recognizable melodic hook
 - [x] Layered procedural stereo combat feedback and mix pass
 - [ ] Optional professional voice performances
 - [x] Four-beat Captain's Drill for switching, manual flight, fleet orders, and abilities
