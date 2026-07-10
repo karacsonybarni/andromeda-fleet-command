@@ -17,6 +17,7 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Guided first mission and procedural tactical audio cues
 - Persistent accessibility settings, gamepad controls, captions, reduced flashes, and crash reports
 - Deterministic replay validation, a headless benchmark, and structured player-feedback forms
+- Optional Steam achievement hooks, authoritative-session validation, and desktop package automation
 - Automated core tests and an actual Godot launch smoke test
 
 ## Required before the Indiegogo demo is called complete
@@ -25,13 +26,13 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Bundled whisper.cpp executables and measured voice/model latency requirements
 - Mission-duration balancing from external playtests
 - Professional audio mix and voice performances
-- Signed Windows and Linux demo packages
+- Owner-signed and clean-machine-verified Windows and Linux demo packages
 - Steam Deck and mid-range Windows performance evidence
 - Captured gameplay trailer
 
 ## Steam-alpha or stretch work, not a current demo promise
 
-- Steamworks achievements, lobbies, invitations, cloud saves, and Workshop
+- Steam lobbies, invitations, cloud synchronization, and Workshop
 - Server-authoritative multiplayer transport, lobbies, and desync recovery
 - Full action rebinding plus ultrawide and localized-subtitle validation
 - Steam Deck verification and public playtest infrastructure

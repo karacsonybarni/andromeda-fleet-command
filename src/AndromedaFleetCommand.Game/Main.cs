@@ -70,6 +70,7 @@ public sealed partial class Main : Node2D
     private BattleReplayStore? _replayStore;
     private ReplayRecorder? _replayRecorder;
     private int _simulationTick;
+    private IPlatformServices? _platform;
 
     public override void _Ready()
     {
@@ -87,6 +88,7 @@ public sealed partial class Main : Node2D
         RebuildLocalAiAdapters();
         _audio = new(this);
         if (!_smokeTest && !benchmarkMode) _audio.StartAmbient();
+        _platform = PlatformServicesFactory.Create();
         _progressStore = new(ProjectSettings.GlobalizePath("user://campaign-progress.json"));
         _progress = _progressStore.Load();
         CreateStars();
@@ -94,6 +96,7 @@ public sealed partial class Main : Node2D
         CreateCommandLine();
         AddLog($"Mission 1: {_simulation.Mission.Title}. Press H when ready.");
         AddLog("Enter opens the fleet command channel.");
+        AddLog($"Platform: {_platform.Name}");
         StartReplayRecording();
         if (benchmarkMode)
         {
@@ -117,11 +120,13 @@ public sealed partial class Main : Node2D
         _localAiSetup?.Dispose();
         _crashReports?.Dispose();
         _audio?.StopAmbient();
+        _platform?.Dispose();
     }
 
     public override void _Process(double delta)
     {
         _weaponAudioCooldown = Math.Max(0, _weaponAudioCooldown - delta);
+        _platform?.RunCallbacks();
         _audioCaptionTime = Math.Max(0, _audioCaptionTime - delta);
         if (_statusTime > 0)
         {
@@ -766,6 +771,15 @@ public sealed partial class Main : Node2D
 
         _progress = _progress.Complete(_simulation.Mission.Id);
         _progressStore?.Save(_progress);
+        _platform?.UnlockAchievement(_simulation.Mission.Id switch
+        {
+            MissionId.FirstCommand => "ACH_FIRST_COMMAND",
+            MissionId.BrokenShield => "ACH_BROKEN_SHIELD",
+            MissionId.BlackSun => "ACH_BLACK_SUN",
+            _ => "ACH_MISSION_COMPLETE"
+        });
+        if (_progress.CompletedMissions.Count == MissionCatalog.All.Count)
+            _platform?.UnlockAchievement("ACH_CAMPAIGN_COMPLETE");
         PlayCue(TacticalCue.Victory, "Mission accomplished");
         var current = MissionCatalog.IndexOf(_simulation.Mission.Id);
         AddLog(current + 1 < MissionCatalog.All.Count

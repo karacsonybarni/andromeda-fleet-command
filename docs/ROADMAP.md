@@ -33,12 +33,15 @@
 
 ## Steam alpha
 
-- [ ] Steamworks achievements, lobbies, invitations, cloud saves, and Workshop
+- [x] Optional runtime-detected GodotSteam achievement adapter
+- [ ] Steam lobbies, invitations, Cloud synchronization, and Workshop
 - [x] Deterministic input recording and final-state replay checksum validation
+- [x] Authoritative command ownership, sequence, and tick-window validation core
 - [ ] Server-authoritative multiplayer transport, lobbies, and desync recovery
 - [x] Persistent settings, gamepad flight/combat, color-vision palettes, captions, and reduced flashes
 - [ ] Full action rebinding plus manual ultrawide and subtitle-language validation
 - [ ] Signed Windows and Linux packages
+- [x] Tagged CI workflow for unsigned checksummed Windows/Linux packages
 - [ ] Steam Deck verification work
 - [x] Public bug-report and player-feedback issue templates
 - [ ] Steam Playtest branch

@@ -10,7 +10,7 @@ Command:
 dotnet run --project tests/AndromedaFleetCommand.Core.Tests
 ~~~
 
-Result: **23 tests, 0 failures**.
+Result: **26 tests, 0 failures**.
 
 Coverage includes:
 
@@ -24,6 +24,7 @@ Coverage includes:
 - loopback-only local-AI configuration and corrupt-settings recovery
 - accessibility-setting normalization and corrupt-settings recovery
 - deterministic replay checksums, persistence, and corruption rejection
+- authoritative multiplayer ownership, sequencing, and deterministic snapshot validation
 - manual control and speed limits
 - validated command dispatch
 - tactical-ability cooldowns
