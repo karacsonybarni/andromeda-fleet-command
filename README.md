@@ -46,6 +46,16 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the rationale.
 
 ## Play
 
+### Verified desktop build
+
+The latest clean `main` package is available from the
+[successful desktop-demo workflow](https://github.com/karacsonybarni/andromeda-fleet-command/actions/runs/29088052845).
+Its artifact contains separate Windows and Linux archives plus portable SHA-256
+checksums. The Linux archive is launch-tested headlessly before upload; the
+Windows archive is cross-exported and still needs a clean Windows playtest.
+
+### Run from source
+
 Install:
 
 1. [.NET 8 SDK](https://dotnet.microsoft.com/download/dotnet/8.0)
