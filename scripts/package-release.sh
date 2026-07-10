@@ -14,6 +14,6 @@ cp README.md LICENSE dist/windows/
 cp README.md LICENSE dist/linux/
 (cd dist/windows && zip -q -r ../packages/AndromedaFleetCommand-Windows-x64.zip .)
 (cd dist/linux && chmod +x AndromedaFleetCommand.x86_64 && tar -czf ../packages/AndromedaFleetCommand-Linux-x64.tar.gz .)
-sha256sum dist/packages/* > dist/packages/SHA256SUMS.txt
+(cd dist/packages && sha256sum AndromedaFleetCommand-Linux-x64.tar.gz AndromedaFleetCommand-Windows-x64.zip > SHA256SUMS.txt)
 echo "Packaged desktop demo artifacts:"
 cat dist/packages/SHA256SUMS.txt

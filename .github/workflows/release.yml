@@ -47,10 +47,12 @@ jobs:
           "$GODOT_EDITOR" --headless --path . --export-release "Windows Desktop"
           "$GODOT_EDITOR" --headless --path . --export-release "Linux"
           test -x dist/linux/AndromedaFleetCommand.x86_64
+          test -z "$(find dist/windows dist/linux -name '*.pdb' -print -quit)"
           smoke_log="$(mktemp)"
           HOME="$(mktemp -d)" timeout 30s dist/linux/AndromedaFleetCommand.x86_64 --headless -- --smoke-test 2>&1 | tee "$smoke_log"
           grep -q "AFC_SMOKE_PASS" "$smoke_log"
           ./scripts/package-release.sh
+          (cd dist/packages && sha256sum -c SHA256SUMS.txt)
       - uses: actions/upload-artifact@v4
         with:
           name: AndromedaFleetCommand-${{ github.ref_name }}
