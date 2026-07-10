@@ -278,12 +278,23 @@ static void CampaignProgressPersistsSafely()
 static void TutorialAdvancesInOrder()
 {
     var tutorial = new TutorialTracker();
+    Equal(4, TutorialTracker.Steps.Count, "Tutorial stays concise");
+    True(TutorialTracker.Steps.All(step => !string.IsNullOrWhiteSpace(step.Title) &&
+            !string.IsNullOrWhiteSpace(step.KeyboardPrompt) &&
+            !string.IsNullOrWhiteSpace(step.ControllerPrompt) &&
+            !string.IsNullOrWhiteSpace(step.Purpose)),
+        "Every tutorial beat explains action and purpose for both input modes");
     True(!tutorial.Notify(TutorialAction.IssueOrder), "Cannot skip switch-ship step");
     True(tutorial.Notify(TutorialAction.SwitchShip), "Switch step advances");
+    Near(0.25, tutorial.Progress, 1e-9, "Tutorial exposes progress");
+    True(!tutorial.Notify(TutorialAction.IssueOrder), "Cannot skip manual-control step");
+    True(tutorial.Notify(TutorialAction.ManualControl), "Manual-control step advances");
     True(tutorial.Notify(TutorialAction.IssueOrder), "Order step advances");
     True(tutorial.Notify(TutorialAction.ActivateAbility), "Ability step advances");
     True(tutorial.IsComplete, "Tutorial completes");
-    Equal(3, tutorial.CompletedSteps, "Tutorial reports completed steps");
+    Equal(4, tutorial.CompletedSteps, "Tutorial reports completed steps");
+    True(tutorial.GetPrompt(true).Contains("CAPTAIN CERTIFIED", StringComparison.Ordinal),
+        "Completion message is celebratory");
 }
 
 static void LocalAiConfigurationEnforcesLocalEndpoints()
@@ -300,6 +311,11 @@ static void LocalAiConfigurationEnforcesLocalEndpoints()
     Equal(LocalAiConfiguration.Default.OllamaModel, normalized.OllamaModel,
         "Blank models use the local default");
     True(normalized.OllamaEnabled, "Endpoint normalization does not silently change the user's toggle");
+    True(normalized.PreferGpu == true, "GPU acceleration is preferred by default");
+    Equal(LocalAiConfiguration.MaximumGpuLayers, normalized.OllamaGpuLayers,
+        "GPU mode requests full model-layer offload");
+    Equal(0, (normalized with { PreferGpu = false }).OllamaGpuLayers,
+        "CPU-only mode disables GPU offload explicitly");
 }
 
 static void LocalAiConfigurationPersistsSafely()
@@ -318,6 +334,16 @@ static void LocalAiConfigurationPersistsSafely()
         };
         store.Save(expected);
         Equal(expected.Normalize(), store.Load(), "Local AI configuration round-trips");
+        File.WriteAllText(path, """
+            {
+              "OllamaEnabled": true,
+              "OllamaUrl": "http://127.0.0.1:11434/",
+              "OllamaModel": "qwen3:4b",
+              "WhisperCli": null,
+              "WhisperModel": null
+            }
+            """);
+        True(store.Load().PreferGpu == true, "Older settings upgrade to GPU-preferred mode");
         File.WriteAllText(path, "not json");
         Equal(LocalAiConfiguration.Default, store.Load(), "Corrupt local AI settings recover safely");
     }
