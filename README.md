@@ -31,7 +31,8 @@ Ollama model and whisper.cpp.
 - Built-in three-mission simulation benchmark and structured GitHub feedback forms
 - Optional GodotSteam achievement adapter and deterministic authoritative-session core
 - Tagged CI workflow for checksummed Windows and Linux demo packages
-- Procedural acknowledgements, weapon, ability, alert, and victory audio cues
+- Layered procedural stereo soundscape with varied weapon, impact, destruction, ability, alert,
+  victory, and defeat cues (no licensed sample dependencies)
 - Continuous low-frequency engine-room ambience
 - Deterministic fixed-step simulation suitable for replays and multiplayer
 - Automated parser, combat, mission, persistence, determinism, command, and endurance tests
