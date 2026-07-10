@@ -24,13 +24,15 @@
 - [x] In-game local-AI readiness diagnostics, Ollama pull, and speech-model download
 - [ ] Bundle whisper.cpp executables per platform for a genuinely one-click voice setup
 - [ ] Performance capture on Steam Deck and mid-range Windows hardware
-- [ ] Trailer capture, downloadable demo, crash reporting, and feedback form
+- [x] Automatic local crash reports
+- [ ] Trailer capture, downloadable demo, and feedback form
 
 ## Steam alpha
 
 - [ ] Steamworks achievements, lobbies, invitations, cloud saves, and Workshop
 - [ ] Server-authoritative multiplayer and replay validation
-- [ ] Settings, rebinding, gamepad, ultrawide, color-blind, and subtitle support
+- [x] Persistent settings, gamepad flight/combat, color-vision palettes, captions, and reduced flashes
+- [ ] Full action rebinding plus manual ultrawide and subtitle-language validation
 - [ ] Signed Windows and Linux packages
 - [ ] Steam Deck verification work
 - [ ] Playtest branch and public issue templates

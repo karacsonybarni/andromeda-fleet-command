@@ -14,6 +14,7 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Three sequential missions: First Command, Broken Shield, and Black Sun
 - Mission-specific objectives, protected-ship failure conditions, unlocks, and local saves
 - Guided first mission and procedural tactical audio cues
+- Persistent accessibility settings, gamepad controls, captions, reduced flashes, and crash reports
 - Automated core tests and an actual Godot launch smoke test
 
 ## Required before the Indiegogo demo is called complete
@@ -24,13 +25,13 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Professional audio, engine ambience, and final mix
 - Signed Windows and Linux demo packages
 - Steam Deck and mid-range Windows performance evidence
-- Captured gameplay trailer, crash reporting, and player feedback flow
+- Captured gameplay trailer and player feedback flow
 
 ## Steam-alpha or stretch work, not a current demo promise
 
 - Steamworks achievements, lobbies, invitations, cloud saves, and Workshop
 - Server-authoritative multiplayer and deterministic replay verification
-- Full settings, rebinding, gamepad, ultrawide, color-blind, and subtitle support
+- Full action rebinding plus ultrawide and localized-subtitle validation
 - Steam Deck verification and public playtest infrastructure
 
 The public campaign page should link to this file and label every generated

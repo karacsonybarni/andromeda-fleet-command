@@ -23,7 +23,9 @@ var tests = new (string Name, Action Body)[]
     ("Campaign progress persists and recovers safely", CampaignProgressPersistsSafely),
     ("Tutorial advances only through intended actions", TutorialAdvancesInOrder),
     ("Local AI configuration enforces local endpoints", LocalAiConfigurationEnforcesLocalEndpoints),
-    ("Local AI configuration persists safely", LocalAiConfigurationPersistsSafely)
+    ("Local AI configuration persists safely", LocalAiConfigurationPersistsSafely),
+    ("Game settings normalize accessibility values", GameSettingsNormalizeValues),
+    ("Game settings persist and recover safely", GameSettingsPersistSafely)
 };
 
 var failures = 0;
@@ -310,6 +312,34 @@ static void LocalAiConfigurationPersistsSafely()
         Equal(expected.Normalize(), store.Load(), "Local AI configuration round-trips");
         File.WriteAllText(path, "not json");
         Equal(LocalAiConfiguration.Default, store.Load(), "Corrupt local AI settings recover safely");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static void GameSettingsNormalizeValues()
+{
+    var settings = new GameSettings(4, (ColorVisionMode)999, false, true, -2).Normalize();
+    Near(1, settings.MasterVolume, 1e-9, "Volume clamps high");
+    Equal(ColorVisionMode.Standard, settings.ColorMode, "Unknown palette falls back");
+    Near(0.08, settings.GamepadDeadzone, 1e-9, "Deadzone clamps low");
+    True(settings.ReduceFlashes, "Accessibility toggles are preserved");
+}
+
+static void GameSettingsPersistSafely()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"afc-settings-tests-{Guid.NewGuid():N}");
+    var path = Path.Combine(directory, "settings.json");
+    try
+    {
+        var store = new GameSettingsStore(path);
+        var expected = new GameSettings(0.5, ColorVisionMode.Deuteranopia, true, true, 0.32);
+        store.Save(expected);
+        Equal(expected, store.Load(), "Settings round-trip");
+        File.WriteAllText(path, "[");
+        Equal(GameSettings.Default, store.Load(), "Corrupt settings recover safely");
     }
     finally
     {
