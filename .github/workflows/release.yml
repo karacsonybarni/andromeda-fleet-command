@@ -42,6 +42,7 @@ jobs:
       - name: Import and export
         run: |
           set -euo pipefail
+          mkdir -p dist/windows dist/linux
           "$GODOT_EDITOR" --headless --editor --path . --quit-after 10
           "$GODOT_EDITOR" --headless --path . --export-release "Windows Desktop"
           "$GODOT_EDITOR" --headless --path . --export-release "Linux"
