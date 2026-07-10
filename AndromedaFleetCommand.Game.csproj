@@ -1,0 +1,15 @@
+<Project Sdk="Godot.NET.Sdk/4.7.0">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="src/AndromedaFleetCommand.Game/**/*.cs" />
+    <ProjectReference Include="src/AndromedaFleetCommand.Core/AndromedaFleetCommand.Core.csproj" />
+  </ItemGroup>
+</Project>

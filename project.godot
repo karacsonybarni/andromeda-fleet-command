@@ -1,0 +1,32 @@
+; Engine configuration file.
+; Edit with Godot 4.7 .NET.
+
+config_version=5
+
+[application]
+
+config/name="Andromeda Fleet Command"
+run/main_scene="res://Main.tscn"
+config/features=PackedStringArray("4.7", "C#", "GL Compatibility")
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+window/size/window_width_override=1280
+window/size/window_height_override=720
+window/stretch/mode="canvas_items"
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/default_filters/use_nearest_mipmap_filter=false
+
+[audio]
+
+driver/enable_input=true
+
+[dotnet]
+
+project/assembly_name="AndromedaFleetCommand.Game"

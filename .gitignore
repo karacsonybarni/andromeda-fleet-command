@@ -1,0 +1,11 @@
+.godot/
+.mono/
+**/bin/
+**/obj/
+dist/
+.idea/
+.vscode/
+*.user
+*.suo
+*.log
+.DS_Store
