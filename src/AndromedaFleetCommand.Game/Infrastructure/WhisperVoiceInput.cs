@@ -14,10 +14,16 @@ public sealed class WhisperVoiceInput : IDisposable
     private readonly AudioStreamPlayer? _microphonePlayer;
 
     public WhisperVoiceInput(Node owner)
+        : this(owner, System.Environment.GetEnvironmentVariable("AFC_WHISPER_CLI"),
+            System.Environment.GetEnvironmentVariable("AFC_WHISPER_MODEL"))
+    {
+    }
+
+    public WhisperVoiceInput(Node owner, string? executable, string? model)
     {
         _owner = owner;
-        _executable = System.Environment.GetEnvironmentVariable("AFC_WHISPER_CLI");
-        _model = System.Environment.GetEnvironmentVariable("AFC_WHISPER_MODEL");
+        _executable = executable;
+        _model = model;
         if (string.IsNullOrWhiteSpace(_executable) || string.IsNullOrWhiteSpace(_model) ||
             !File.Exists(_executable) || !File.Exists(_model))
         {

@@ -21,7 +21,8 @@
 - [ ] Engine ambience, professional sound design, mix pass, and voice performances
 - [x] Guided onboarding for switching ships, issuing the first order, and using an ability
 - [ ] Validate a first satisfying spoken order within two minutes on supported hardware
-- [ ] Embedded, one-click local speech and small-LLM model setup
+- [x] In-game local-AI readiness diagnostics, Ollama pull, and speech-model download
+- [ ] Bundle whisper.cpp executables per platform for a genuinely one-click voice setup
 - [ ] Performance capture on Steam Deck and mid-range Windows hardware
 - [ ] Trailer capture, downloadable demo, crash reporting, and feedback form
 

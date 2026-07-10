@@ -21,6 +21,7 @@ Ollama model and whisper.cpp.
 - Natural-language typed fleet commands
 - Optional local Ollama interpretation with safe offline fallback
 - Optional local whisper.cpp push-to-talk
+- In-game local-AI readiness panel and model setup (L)
 - Procedural acknowledgements, weapon, ability, alert, and victory audio cues
 - Deterministic fixed-step simulation suitable for replays and multiplayer
 - Automated parser, combat, mission, persistence, determinism, command, and endurance tests
@@ -68,6 +69,7 @@ powershell -ExecutionPolicy Bypass -File scripts/run.ps1
 - R: restart
 - M: mission selection
 - N: next mission after victory
+- L: local AI and voice setup
 - Esc: cancel or quit
 
 Try:
@@ -82,7 +84,10 @@ Flagship, move north
 
 ## Optional local AI
 
-The offline parser always works. To enable a local Ollama interpreter:
+The offline parser always works. Press L in-game to scan local services, pull
+the recommended Ollama model, and download the whisper.cpp speech model.
+
+Environment variables remain available for scripted setups:
 
 ~~~bash
 AFC_OLLAMA=true AFC_OLLAMA_MODEL=qwen3:4b ./scripts/run.sh

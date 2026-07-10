@@ -10,7 +10,7 @@ Command:
 dotnet run --project tests/AndromedaFleetCommand.Core.Tests
 ~~~
 
-Result: **16 tests, 0 failures**.
+Result: **18 tests, 0 failures**.
 
 Coverage includes:
 
@@ -21,6 +21,7 @@ Coverage includes:
 - all three mission definitions and objective outcomes
 - sequential campaign unlocks and corrupt-save recovery
 - first-command tutorial step ordering
+- loopback-only local-AI configuration and corrupt-settings recovery
 - manual control and speed limits
 - validated command dispatch
 - tactical-ability cooldowns

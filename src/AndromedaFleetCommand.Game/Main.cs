@@ -1,4 +1,5 @@
 using AndromedaFleetCommand.Core.Commands;
+using AndromedaFleetCommand.Core.Configuration;
 using AndromedaFleetCommand.Core.Model;
 using AndromedaFleetCommand.Core.Missions;
 using AndromedaFleetCommand.Core.Simulation;
@@ -38,11 +39,20 @@ public sealed partial class Main : Node2D
     private BattleStatus _observedBattleStatus = BattleStatus.Active;
     private int _previousProjectileCount;
     private double _weaponAudioCooldown;
+    private LocalAiConfigurationStore? _localAiStore;
+    private LocalAiConfiguration _localAiConfiguration = LocalAiConfiguration.Default;
+    private LocalAiSetupService? _localAiSetup;
+    private LocalAiReadiness _localAiReadiness = new(false, false, false, false,
+        "Press R to scan local AI services");
+    private bool _showLocalAiSetup;
+    private bool _localAiBusy;
 
     public override void _Ready()
     {
-        _interpreter = new(_rules);
-        _voiceInput = new(this);
+        _localAiStore = new(ProjectSettings.GlobalizePath("user://local-ai.json"));
+        _localAiConfiguration = LocalAiConfiguration.ApplyEnvironment(_localAiStore.Load());
+        _localAiSetup = new();
+        RebuildLocalAiAdapters();
         _audio = new(this);
         _progressStore = new(ProjectSettings.GlobalizePath("user://campaign-progress.json"));
         _progress = _progressStore.Load();
@@ -65,6 +75,7 @@ public sealed partial class Main : Node2D
     {
         _voiceInput?.Dispose();
         _interpreter?.Dispose();
+        _localAiSetup?.Dispose();
     }
 
     public override void _Process(double delta)
@@ -124,6 +135,28 @@ public sealed partial class Main : Node2D
             return;
         }
 
+        if (_showLocalAiSetup)
+        {
+            switch (key.Keycode)
+            {
+                case Key.L:
+                case Key.Escape:
+                    _showLocalAiSetup = false;
+                    break;
+                case Key.R:
+                    RefreshLocalAiStatus();
+                    break;
+                case Key.O:
+                    InstallOllamaModel();
+                    break;
+                case Key.W:
+                    InstallWhisperModel();
+                    break;
+            }
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (_showMissionSelect)
         {
             if (key.Keycode == Key.M || key.Keycode == Key.Escape)
@@ -164,6 +197,10 @@ public sealed partial class Main : Node2D
                 break;
             case Key.M when !_showHelp:
                 _showMissionSelect = true;
+                break;
+            case Key.L:
+                _showLocalAiSetup = true;
+                RefreshLocalAiStatus();
                 break;
             case Key.N when !_showHelp && _simulation.Status == BattleStatus.PlayerVictory:
                 LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
@@ -305,6 +342,108 @@ public sealed partial class Main : Node2D
         {
             SetStatus($"Voice failed: {error.Message}");
             AddLog($"VOICE  {error.Message}");
+        }
+    }
+
+    private void RebuildLocalAiAdapters()
+    {
+        _voiceInput?.Dispose();
+        _interpreter?.Dispose();
+        _interpreter = new(_rules, _localAiConfiguration);
+        _voiceInput = new(this, _localAiConfiguration.WhisperCli, _localAiConfiguration.WhisperModel);
+    }
+
+    private async void RefreshLocalAiStatus()
+    {
+        if (_localAiSetup is null || _localAiBusy) return;
+        _localAiBusy = true;
+        _localAiReadiness = _localAiReadiness with { Detail = "Scanning local services…" };
+        QueueRedraw();
+        try
+        {
+            var discoveredCli = LocalAiSetupService.FindWhisperCli();
+            if (_localAiConfiguration.WhisperCli is null && discoveredCli is not null)
+            {
+                _localAiConfiguration = _localAiConfiguration with { WhisperCli = discoveredCli };
+                _localAiStore?.Save(_localAiConfiguration);
+                RebuildLocalAiAdapters();
+            }
+            _localAiReadiness = await _localAiSetup.CheckAsync(_localAiConfiguration);
+        }
+        catch (Exception error)
+        {
+            _localAiReadiness = _localAiReadiness with { Detail = $"Readiness scan failed: {error.Message}" };
+        }
+        finally
+        {
+            _localAiBusy = false;
+            QueueRedraw();
+        }
+    }
+
+    private async void InstallOllamaModel()
+    {
+        if (_localAiSetup is null || _localAiBusy) return;
+        _localAiBusy = true;
+        _localAiReadiness = _localAiReadiness with
+        {
+            Detail = $"Pulling {_localAiConfiguration.OllamaModel} from local Ollama…"
+        };
+        QueueRedraw();
+        try
+        {
+            await _localAiSetup.PullOllamaModelAsync(_localAiConfiguration);
+            _localAiConfiguration = _localAiConfiguration with { OllamaEnabled = true };
+            _localAiStore?.Save(_localAiConfiguration);
+            RebuildLocalAiAdapters();
+            _localAiReadiness = await _localAiSetup.CheckAsync(_localAiConfiguration);
+            SetStatus("Local command model ready");
+        }
+        catch (Exception error)
+        {
+            _localAiReadiness = _localAiReadiness with
+            {
+                Detail = $"Ollama setup failed: {error.Message}. Start Ollama and retry."
+            };
+        }
+        finally
+        {
+            _localAiBusy = false;
+            QueueRedraw();
+        }
+    }
+
+    private async void InstallWhisperModel()
+    {
+        if (_localAiSetup is null || _localAiBusy) return;
+        _localAiBusy = true;
+        _localAiReadiness = _localAiReadiness with { Detail = "Downloading the local speech model…" };
+        QueueRedraw();
+        try
+        {
+            var destination = ProjectSettings.GlobalizePath(
+                $"user://models/{LocalAiSetupService.WhisperModelFileName}");
+            await _localAiSetup.DownloadWhisperModelAsync(destination);
+            _localAiConfiguration = _localAiConfiguration with
+            {
+                WhisperCli = _localAiConfiguration.WhisperCli ?? LocalAiSetupService.FindWhisperCli(),
+                WhisperModel = destination
+            };
+            _localAiStore?.Save(_localAiConfiguration);
+            RebuildLocalAiAdapters();
+            _localAiReadiness = await _localAiSetup.CheckAsync(_localAiConfiguration);
+            SetStatus(_localAiReadiness.VoiceReady
+                ? "Local voice control ready"
+                : "Speech model installed; whisper-cli still needs to be installed");
+        }
+        catch (Exception error)
+        {
+            _localAiReadiness = _localAiReadiness with { Detail = $"Speech setup failed: {error.Message}" };
+        }
+        finally
+        {
+            _localAiBusy = false;
+            QueueRedraw();
         }
     }
 
@@ -580,7 +719,11 @@ public sealed partial class Main : Node2D
 
     private void DrawOverlay()
     {
-        if (_showMissionSelect)
+        if (_showLocalAiSetup)
+        {
+            DrawLocalAiSetup();
+        }
+        else if (_showMissionSelect)
         {
             DrawMissionSelect();
         }
@@ -604,7 +747,8 @@ public sealed partial class Main : Node2D
                 ("Q", "Use the selected ship’s tactical ability"),
                 ("V", "Local voice command adapter"),
                 ("P / H / R", "Pause, help, restart"),
-                ("M", "Open mission selection")
+                ("M", "Open mission selection"),
+                ("L", "Open local AI setup")
             };
             var y = 330;
             foreach (var (key, description) in controls)
@@ -662,6 +806,50 @@ public sealed partial class Main : Node2D
 
         DrawLabel("Press 1–3 to deploy • M or Esc to close", new(800, 690), 14,
             new Color("ffd065"), HorizontalAlignment.Center, 700);
+    }
+
+    private void DrawLocalAiSetup()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.86f));
+        DrawPanel(new(350, 105, 900, 690));
+        DrawLabel("LOCAL AI CONTROL CENTER", new(800, 175), 32, Colors.White,
+            HorizontalAlignment.Center, 780);
+        DrawLabel("Runtime commands stay on this computer", new(800, 208), 15, Cyan,
+            HorizontalAlignment.Center, 780);
+
+        DrawSetupRow(280, "OFFLINE COMMAND PARSER", true,
+            "Always available — no model, account, or internet required");
+        DrawSetupRow(390, $"OLLAMA  •  {_localAiConfiguration.OllamaModel}",
+            _localAiReadiness.OllamaReachable && _localAiReadiness.OllamaModelInstalled,
+            !_localAiReadiness.OllamaReachable
+                ? "Ollama is not running on 127.0.0.1"
+                : _localAiReadiness.OllamaModelInstalled
+                    ? "Installed and enabled for natural-language rewriting"
+                    : "Service detected; press O to pull the recommended model");
+        DrawSetupRow(500, "WHISPER.CPP VOICE", _localAiReadiness.VoiceReady,
+            _localAiReadiness.VoiceReady
+                ? "whisper-cli and the base English speech model are ready"
+                : _localAiReadiness.WhisperCliFound
+                    ? "whisper-cli found; press W to download the speech model"
+                    : "Press W for the model; install whisper-cli to enable recording");
+
+        DrawLabel(_localAiBusy ? "WORKING — this may take several minutes" : _localAiReadiness.Detail,
+            new(800, 625), 14, _localAiBusy ? new Color("ffd065") : new Color("b9d9e7"),
+            HorizontalAlignment.Center, 780);
+        DrawLabel("O  Install Ollama model     W  Install speech model     R  Rescan",
+            new(800, 690), 15, new Color("ffd065"), HorizontalAlignment.Center, 780);
+        DrawLabel("L or Esc to close", new(800, 735), 13, new Color("87b5ca"),
+            HorizontalAlignment.Center, 780);
+    }
+
+    private void DrawSetupRow(float y, string title, bool ready, string detail)
+    {
+        DrawPanel(new(430, y - 42, 740, 88));
+        DrawCircle(new(474, y), 10, ready ? new Color("48eba9") : new Color("ffb047"));
+        DrawLabel(title, new(505, y - 7), 17, Colors.White);
+        DrawLabel(detail, new(505, y + 22), 13, new Color("9bc9dc"));
+        DrawLabel(ready ? "READY" : "SETUP", new(1070, y + 8), 12,
+            ready ? new Color("48eba9") : new Color("ffb047"), HorizontalAlignment.Center, 70);
     }
 
     private void DrawBanner(string title, string subtitle, Color color)
