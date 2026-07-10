@@ -71,6 +71,9 @@ public sealed partial class Main : Node2D
     private ReplayRecorder? _replayRecorder;
     private int _simulationTick;
     private IPlatformServices? _platform;
+    private bool _lastInputWasController;
+    private double _tutorialStepFlash;
+    private double _tutorialCelebrationTime;
 
     public override void _Ready()
     {
@@ -126,6 +129,8 @@ public sealed partial class Main : Node2D
     public override void _Process(double delta)
     {
         _weaponAudioCooldown = Math.Max(0, _weaponAudioCooldown - delta);
+        _tutorialStepFlash = Math.Max(0, _tutorialStepFlash - delta);
+        _tutorialCelebrationTime = Math.Max(0, _tutorialCelebrationTime - delta);
         _platform?.RunCallbacks();
         _audioCaptionTime = Math.Max(0, _audioCaptionTime - delta);
         if (_statusTime > 0)
@@ -146,6 +151,7 @@ public sealed partial class Main : Node2D
                 Input.IsKeyPressed(Key.A) || joyX < -deadzone,
                 Input.IsKeyPressed(Key.D) || joyX > deadzone,
                 Input.IsKeyPressed(Key.Space) || Input.IsJoyButtonPressed(0, JoyButton.A));
+            if (manualInput != ManualInput.None) AdvanceTutorial(TutorialAction.ManualControl);
             _replayRecorder?.RecordInput(_simulationTick, manualInput);
             _simulation.SetManualInput(manualInput);
             var safety = 0;
@@ -183,11 +189,13 @@ public sealed partial class Main : Node2D
     {
         if (inputEvent is InputEventJoypadButton { Pressed: true } joypad)
         {
+            _lastInputWasController = true;
             HandleGamepadButton(joypad.ButtonIndex);
             GetViewport().SetInputAsHandled();
             return;
         }
         if (inputEvent is not InputEventKey { Pressed: true, Echo: false } key) return;
+        _lastInputWasController = false;
         if (_commandMode)
         {
             if (key.Keycode == Key.Escape) CloseCommandLine("Command cancelled");
@@ -210,6 +218,9 @@ public sealed partial class Main : Node2D
                     break;
                 case Key.W:
                     InstallWhisperModel();
+                    break;
+                case Key.G:
+                    ToggleGpuPreference();
                     break;
             }
             GetViewport().SetInputAsHandled();
@@ -715,6 +726,21 @@ public sealed partial class Main : Node2D
         }
     }
 
+    private void ToggleGpuPreference()
+    {
+        _localAiConfiguration = _localAiConfiguration with
+        {
+            PreferGpu = _localAiConfiguration.PreferGpu == false
+        };
+        _localAiStore?.Save(_localAiConfiguration);
+        RebuildLocalAiAdapters();
+        var mode = _localAiConfiguration.PreferGpu == false
+            ? "CPU-only inference selected"
+            : "GPU acceleration preferred with CPU fallback";
+        _localAiReadiness = _localAiReadiness with { Detail = mode };
+        SetStatus(mode);
+    }
+
     private void Restart()
     {
         _simulation.Reset();
@@ -726,6 +752,8 @@ public sealed partial class Main : Node2D
         _previousProjectileCount = 0;
         StartReplayRecording();
         if (_simulation.Mission.Id == MissionId.FirstCommand) _tutorial = new();
+        _tutorialCelebrationTime = 0;
+        _tutorialStepFlash = 0;
         SetStatus("Fleet ready");
     }
 
@@ -745,6 +773,8 @@ public sealed partial class Main : Node2D
         var mission = MissionCatalog.All[missionIndex];
         _simulation.LoadMission(mission.Id);
         _tutorial = new();
+        _tutorialCelebrationTime = 0;
+        _tutorialStepFlash = 0;
         _observedBattleStatus = BattleStatus.Active;
         _previousProjectileCount = 0;
         StartReplayRecording();
@@ -789,9 +819,22 @@ public sealed partial class Main : Node2D
 
     private void AdvanceTutorial(TutorialAction action)
     {
-        if (_simulation.Mission.Id != MissionId.FirstCommand || !_tutorial.Notify(action)) return;
-        SetStatus(_tutorial.CurrentPrompt);
-        AddLog(_tutorial.CurrentPrompt);
+        if (_simulation.Mission.Id != MissionId.FirstCommand || _tutorial.IsComplete) return;
+        var completed = _tutorial.CurrentStep!;
+        if (!_tutorial.Notify(action)) return;
+
+        _tutorialStepFlash = 1.1;
+        PlayCue(TacticalCue.Acknowledgement, $"Training step complete: {completed.Title}");
+        if (_tutorial.IsComplete)
+        {
+            _tutorialCelebrationTime = 4.5;
+            SetStatus("CAPTAIN CERTIFIED • Fleet command is yours");
+            AddLog("CAPTAIN'S DRILL COMPLETE • Destroy the raider leader.");
+            return;
+        }
+
+        SetStatus($"{completed.Title.ToUpperInvariant()} COMPLETE • {_tutorial.CurrentStep!.Title}");
+        AddLog(_tutorial.GetPrompt(_lastInputWasController));
     }
 
     private void DrawSpace()
@@ -938,12 +981,9 @@ public sealed partial class Main : Node2D
             DrawPanel(new(510, 87, 580, 38));
             DrawLabel(_status, new(800, 112), 14, new Color("a0e1f5"), HorizontalAlignment.Center, 560);
         }
-        if (_simulation.Mission.Id == MissionId.FirstCommand && !_showHelp && !_tutorial.IsComplete)
-        {
-            DrawPanel(new(480, 132, 640, 42));
-            DrawLabel(_tutorial.CurrentPrompt, new(800, 159), 14, new Color("ffd065"),
-                HorizontalAlignment.Center, 610);
-        }
+        if (_simulation.Mission.Id == MissionId.FirstCommand && !_showHelp &&
+            (!_tutorial.IsComplete || _tutorialCelebrationTime > 0))
+            DrawTutorialCoach();
         if (_settings.Subtitles && _audioCaptionTime > 0)
         {
             DrawPanel(new(530, 681, 540, 36));
@@ -1038,6 +1078,11 @@ public sealed partial class Main : Node2D
         }
         else if (_showHelp)
         {
+            if (_simulation.Mission.Id == MissionId.FirstCommand && !_tutorial.IsComplete)
+            {
+                DrawTutorialBriefing();
+                return;
+            }
             DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.75f));
             DrawPanel(new(370, 120, 860, 650));
             DrawLabel($"MISSION {MissionCatalog.IndexOf(_simulation.Mission.Id) + 1}  •  {_simulation.Mission.Title.ToUpperInvariant()}",
@@ -1090,6 +1135,96 @@ public sealed partial class Main : Node2D
         }
     }
 
+    private void DrawTutorialBriefing()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.84f));
+        DrawPanel(new(270, 135, 1060, 630));
+        DrawLabel("CAPTAIN'S DRILL", new(800, 205), 38, Colors.White,
+            HorizontalAlignment.Center, 900);
+        DrawLabel("Four actions. About sixty seconds. Learn by commanding.", new(800, 242), 16,
+            Cyan, HorizontalAlignment.Center, 900);
+        DrawLabel("Raiders have trapped a civilian convoy. Master the fleet, then disable their leader.",
+            new(800, 282), 14, new Color("c9dce6"), HorizontalAlignment.Center, 920);
+
+        for (var index = 0; index < TutorialTracker.Steps.Count; index++)
+        {
+            var step = TutorialTracker.Steps[index];
+            var completed = index < _tutorial.CompletedSteps;
+            var active = index == _tutorial.CompletedSteps;
+            var x = 332 + index * 238;
+            var color = completed ? new Color("48eba9") : active ? new Color("ffd065") : Cyan;
+            DrawPanel(new(x, 335, 214, 230));
+            DrawCircle(new(x + 107, 382), 23, new(color, 0.2f));
+            DrawArc(new(x + 107, 382), 23, 0, Mathf.Tau, 36, color, 2);
+            DrawLabel(completed ? "✓" : $"{index + 1}", new(x + 107, 390), 18, color,
+                HorizontalAlignment.Center, 30);
+            DrawLabel(step.Title.ToUpperInvariant(), new(x + 107, 435), 15, Colors.White,
+                HorizontalAlignment.Center, 190);
+            DrawLabel(step.Action switch
+            {
+                TutorialAction.SwitchShip => "TAB  /  LB–RB",
+                TutorialAction.ManualControl => "WASD  /  STICK",
+                TutorialAction.IssueOrder => "ENTER  /  VOICE",
+                _ => "Q  /  B"
+            }, new(x + 107, 475), 14, color, HorizontalAlignment.Center, 190);
+            DrawLabel(step.Purpose, new(x + 107, 523), 12, new Color("9fc5d6"),
+                HorizontalAlignment.Center, 190);
+        }
+
+        DrawLabel($"Objective after training: {_simulation.Mission.Objective.Title}", new(800, 628), 16,
+            new Color("ffd065"), HorizontalAlignment.Center, 900);
+        DrawLabel(_lastInputWasController ? "Press A or START to deploy" : "Press H to deploy",
+            new(800, 700), 18, Colors.White, HorizontalAlignment.Center, 900);
+        DrawLabel("The battle is paused while this briefing is open", new(800, 730), 12,
+            new Color("789bac"), HorizontalAlignment.Center, 900);
+    }
+
+    private void DrawTutorialCoach()
+    {
+        var flash = (float)Math.Clamp(_tutorialStepFlash, 0, 1);
+        var border = _tutorial.IsComplete ? new Color("48eba9") : new Color("ffd065");
+        DrawStyleBox(new StyleBoxFlat
+        {
+            BgColor = new Color(0.01f, 0.045f, 0.08f, 0.96f),
+            BorderColor = new(border, 0.65f + flash * 0.35f),
+            BorderWidthLeft = 2,
+            BorderWidthTop = 2,
+            BorderWidthRight = 2,
+            BorderWidthBottom = 2,
+            CornerRadiusTopLeft = 14,
+            CornerRadiusTopRight = 14,
+            CornerRadiusBottomLeft = 14,
+            CornerRadiusBottomRight = 14
+        }, new Rect2(430, 132, 740, 104));
+
+        if (_tutorial.IsComplete)
+        {
+            DrawLabel("CAPTAIN CERTIFIED", new(800, 174), 19, border,
+                HorizontalAlignment.Center, 690);
+            DrawLabel("Training complete • Destroy the raider leader", new(800, 207), 14,
+                Colors.White, HorizontalAlignment.Center, 690);
+            return;
+        }
+
+        var step = _tutorial.CurrentStep!;
+        for (var index = 0; index < TutorialTracker.Steps.Count; index++)
+        {
+            var completed = index < _tutorial.CompletedSteps;
+            var active = index == _tutorial.CompletedSteps;
+            var color = completed ? new Color("48eba9") : active ? border : new Color("405a68");
+            DrawCircle(new(665 + index * 90, 153), active ? 7 : 5, color);
+            if (index + 1 < TutorialTracker.Steps.Count)
+                DrawLine(new(673 + index * 90, 153), new(747 + index * 90, 153),
+                    new(color, 0.45f), 2);
+        }
+        DrawLabel(step.Title.ToUpperInvariant(), new(800, 183), 16, border,
+            HorizontalAlignment.Center, 690);
+        DrawLabel(_tutorial.GetPrompt(_lastInputWasController), new(800, 207), 14, Colors.White,
+            HorizontalAlignment.Center, 690);
+        DrawLabel(step.Purpose, new(800, 226), 11, new Color("8db6c9"),
+            HorizontalAlignment.Center, 690);
+    }
+
     private void DrawMissionSelect()
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.82f));
@@ -1134,7 +1269,9 @@ public sealed partial class Main : Node2D
             !_localAiReadiness.OllamaReachable
                 ? "Ollama is not running on 127.0.0.1"
                 : _localAiReadiness.OllamaModelInstalled
-                    ? "Installed and enabled for natural-language rewriting"
+                    ? _localAiConfiguration.PreferGpu == false
+                        ? "Ready • CPU-only mode"
+                        : "Ready • maximum GPU offload with automatic CPU fallback"
                     : "Service detected; press O to pull the recommended model");
         DrawSetupRow(500, "WHISPER.CPP VOICE", _localAiReadiness.VoiceReady,
             _localAiReadiness.VoiceReady
@@ -1146,7 +1283,7 @@ public sealed partial class Main : Node2D
         DrawLabel(_localAiBusy ? "WORKING — this may take several minutes" : _localAiReadiness.Detail,
             new(800, 625), 14, _localAiBusy ? new Color("ffd065") : new Color("b9d9e7"),
             HorizontalAlignment.Center, 780);
-        DrawLabel("O  Install Ollama model     W  Install speech model     R  Rescan",
+        DrawLabel("O  Install model     G  GPU/CPU mode     W  Speech model     R  Rescan",
             new(800, 690), 15, new Color("ffd065"), HorizontalAlignment.Center, 780);
         DrawLabel("L or Esc to close", new(800, 735), 13, new Color("87b5ca"),
             HorizontalAlignment.Center, 780);

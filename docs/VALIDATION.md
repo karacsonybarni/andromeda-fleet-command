@@ -20,8 +20,9 @@ Coverage includes:
 - deterministic replay-equivalent simulation
 - all three mission definitions and objective outcomes
 - sequential campaign unlocks and corrupt-save recovery
-- first-command tutorial step ordering
+- concise four-beat tutorial ordering, progress, purpose text, and dual-input prompts
 - loopback-only local-AI configuration and corrupt-settings recovery
+- GPU-preferred local inference defaults and legacy-settings migration
 - accessibility-setting normalization and corrupt-settings recovery
 - deterministic replay checksums, persistence, and corruption rejection
 - authoritative multiplayer ownership, sequencing, and deterministic snapshot validation

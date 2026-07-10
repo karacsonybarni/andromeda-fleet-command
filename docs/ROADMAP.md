@@ -21,7 +21,7 @@
 - [x] Procedural acknowledgements, weapons, abilities, tactical alerts, and victory cues
 - [x] Continuous procedural engine-room ambience
 - [ ] Professional sound-design and mix pass plus voice performances
-- [x] Guided onboarding for switching ships, issuing the first order, and using an ability
+- [x] Four-beat Captain's Drill for switching, manual flight, fleet orders, and abilities
 - [ ] Validate a first satisfying spoken order within two minutes on supported hardware
 - [x] In-game local-AI readiness diagnostics, Ollama pull, and speech-model download
 - [ ] Bundle whisper.cpp executables per platform for a genuinely one-click voice setup
