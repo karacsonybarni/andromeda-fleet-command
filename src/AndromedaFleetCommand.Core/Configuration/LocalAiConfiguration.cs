@@ -7,10 +7,15 @@ public sealed record LocalAiConfiguration(
     string OllamaUrl,
     string OllamaModel,
     string? WhisperCli,
-    string? WhisperModel)
+    string? WhisperModel,
+    bool? PreferGpu = true)
 {
+    public const int MaximumGpuLayers = 999;
+
     public static LocalAiConfiguration Default =>
-        new(false, "http://127.0.0.1:11434/", "qwen3:4b", null, null);
+        new(false, "http://127.0.0.1:11434/", "qwen3:4b", null, null, true);
+
+    public int OllamaGpuLayers => PreferGpu == false ? 0 : MaximumGpuLayers;
 
     public LocalAiConfiguration Normalize()
     {
@@ -24,7 +29,8 @@ public sealed record LocalAiConfiguration(
             OllamaUrl = endpoint,
             OllamaModel = model,
             WhisperCli = CleanPath(WhisperCli),
-            WhisperModel = CleanPath(WhisperModel)
+            WhisperModel = CleanPath(WhisperModel),
+            PreferGpu = PreferGpu ?? true
         };
     }
 
@@ -33,9 +39,13 @@ public sealed record LocalAiConfiguration(
         var enabled = bool.TryParse(Environment.GetEnvironmentVariable("AFC_OLLAMA"), out var value)
             ? value
             : persisted.OllamaEnabled;
+        var preferGpu = bool.TryParse(Environment.GetEnvironmentVariable("AFC_OLLAMA_GPU"), out var gpuValue)
+            ? gpuValue
+            : persisted.PreferGpu;
         return (persisted with
         {
             OllamaEnabled = enabled,
+            PreferGpu = preferGpu,
             OllamaUrl = Environment.GetEnvironmentVariable("AFC_OLLAMA_URL") ?? persisted.OllamaUrl,
             OllamaModel = Environment.GetEnvironmentVariable("AFC_OLLAMA_MODEL") ?? persisted.OllamaModel,
             WhisperCli = Environment.GetEnvironmentVariable("AFC_WHISPER_CLI") ?? persisted.WhisperCli,
