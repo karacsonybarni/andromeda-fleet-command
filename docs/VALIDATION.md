@@ -10,7 +10,7 @@ Command:
 dotnet run --project tests/AndromedaFleetCommand.Core.Tests
 ~~~
 
-Result: **20 tests, 0 failures**.
+Result: **23 tests, 0 failures**.
 
 Coverage includes:
 
@@ -23,6 +23,7 @@ Coverage includes:
 - first-command tutorial step ordering
 - loopback-only local-AI configuration and corrupt-settings recovery
 - accessibility-setting normalization and corrupt-settings recovery
+- deterministic replay checksums, persistence, and corruption rejection
 - manual control and speed limits
 - validated command dispatch
 - tactical-ability cooldowns
@@ -54,6 +55,12 @@ Expected smoke marker:
 
 ~~~text
 AFC_SMOKE_PASS ships=5 projectiles=...
+~~~
+
+Benchmark marker from this environment:
+
+~~~text
+AFC_BENCHMARK_PASS ticks=32400 ticks_per_second=37360
 ~~~
 
 ## Remaining manual checks

@@ -25,6 +25,8 @@ Ollama model and whisper.cpp.
 - Persistent volume, color-vision, reduced-flash, caption, and controller settings
 - Gamepad flight, weapons, abilities, ship switching, pause, and menu controls
 - Automatic local crash reports under the Godot user-data directory
+- Deterministic input replays with final-state checksum verification
+- Built-in three-mission simulation benchmark and structured GitHub feedback forms
 - Procedural acknowledgements, weapon, ability, alert, and victory audio cues
 - Deterministic fixed-step simulation suitable for replays and multiplayer
 - Automated parser, combat, mission, persistence, determinism, command, and endurance tests
@@ -74,6 +76,9 @@ powershell -ExecutionPolicy Bypass -File scripts/run.ps1
 - N: next mission after victory
 - L: local AI and voice setup
 - F10: settings and accessibility
+- F7: run the simulation benchmark
+- F8: open player feedback
+- F9: verify the latest saved replay
 - Esc: cancel or quit
 
 Try:
@@ -113,6 +118,12 @@ No cloud model is part of the runtime architecture.
 ~~~bash
 ./scripts/test.sh
 ./scripts/check.sh
+~~~
+
+Headless performance harness:
+
+~~~bash
+godot --headless --path . -- --benchmark
 ~~~
 
 ## Export for Steam

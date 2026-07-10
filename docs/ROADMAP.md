@@ -24,17 +24,21 @@
 - [x] In-game local-AI readiness diagnostics, Ollama pull, and speech-model download
 - [ ] Bundle whisper.cpp executables per platform for a genuinely one-click voice setup
 - [ ] Performance capture on Steam Deck and mid-range Windows hardware
+- [x] Reproducible three-mission simulation benchmark harness
 - [x] Automatic local crash reports
-- [ ] Trailer capture, downloadable demo, and feedback form
+- [x] Structured in-game GitHub feedback and bug-report forms
+- [ ] Trailer capture and downloadable demo
 
 ## Steam alpha
 
 - [ ] Steamworks achievements, lobbies, invitations, cloud saves, and Workshop
-- [ ] Server-authoritative multiplayer and replay validation
+- [x] Deterministic input recording and final-state replay checksum validation
+- [ ] Server-authoritative multiplayer transport, lobbies, and desync recovery
 - [x] Persistent settings, gamepad flight/combat, color-vision palettes, captions, and reduced flashes
 - [ ] Full action rebinding plus manual ultrawide and subtitle-language validation
 - [ ] Signed Windows and Linux packages
 - [ ] Steam Deck verification work
-- [ ] Playtest branch and public issue templates
+- [x] Public bug-report and player-feedback issue templates
+- [ ] Steam Playtest branch
 
 See [CAMPAIGN_SCOPE.md](CAMPAIGN_SCOPE.md) for the promise-by-promise status.

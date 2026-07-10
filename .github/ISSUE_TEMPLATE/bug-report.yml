@@ -1,0 +1,42 @@
+name: Bug report
+description: Report a reproducible game, voice, controller, or performance problem.
+title: "[Bug] "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve Andromeda Fleet Command. Please avoid attaching private voice recordings.
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Include what you expected and what happened instead.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: "1. Start mission…\n2. Issue command…\n3. Observe…"
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      placeholder: Windows/Linux, CPU, GPU, RAM, controller, Godot build or packaged version
+    validations:
+      required: true
+  - type: textarea
+    id: diagnostics
+    attributes:
+      label: Diagnostics
+      description: Paste relevant crash-report or benchmark text. Remove personal paths if desired.
+  - type: checkboxes
+    id: local-ai
+    attributes:
+      label: Local AI setup
+      options:
+        - label: The issue occurs with the offline parser and no local model enabled.
+        - label: Ollama was enabled.
+        - label: whisper.cpp voice input was enabled.
