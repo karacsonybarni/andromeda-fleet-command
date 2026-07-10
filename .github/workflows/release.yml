@@ -3,6 +3,7 @@ name: Build desktop demo
 on:
   workflow_dispatch:
   push:
+    branches: ["main"]
     tags: ["v*"]
 
 permissions:
@@ -24,13 +25,13 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$GODOT_DIR" "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_STATUS}"
+          mkdir -p "$GODOT_DIR" "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_STATUS}.mono"
           base="https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-${GODOT_STATUS}"
           curl -fL "$base/Godot_v${GODOT_VERSION}-${GODOT_STATUS}_mono_linux_x86_64.zip" -o /tmp/godot.zip
           curl -fL "$base/Godot_v${GODOT_VERSION}-${GODOT_STATUS}_mono_export_templates.tpz" -o /tmp/templates.tpz
           unzip -q /tmp/godot.zip -d "$GODOT_DIR"
           unzip -q /tmp/templates.tpz -d /tmp/godot-templates
-          cp -R /tmp/godot-templates/templates/. "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_STATUS}/"
+          cp -R /tmp/godot-templates/templates/. "$HOME/.local/share/godot/export_templates/${GODOT_VERSION}.${GODOT_STATUS}.mono/"
           editor="$(find "$GODOT_DIR" -type f -name 'Godot_*mono_linux.x86_64' | head -1)"
           chmod +x "$editor"
           echo "GODOT_EDITOR=$editor" >> "$GITHUB_ENV"
@@ -40,9 +41,14 @@ jobs:
           dotnet build AndromedaFleetCommand.Game.csproj --configuration Release
       - name: Import and export
         run: |
+          set -euo pipefail
           "$GODOT_EDITOR" --headless --editor --path . --quit-after 10
           "$GODOT_EDITOR" --headless --path . --export-release "Windows Desktop"
           "$GODOT_EDITOR" --headless --path . --export-release "Linux"
+          test -x dist/linux/AndromedaFleetCommand.x86_64
+          smoke_log="$(mktemp)"
+          HOME="$(mktemp -d)" timeout 30s dist/linux/AndromedaFleetCommand.x86_64 --headless -- --smoke-test 2>&1 | tee "$smoke_log"
+          grep -q "AFC_SMOKE_PASS" "$smoke_log"
           ./scripts/package-release.sh
       - uses: actions/upload-artifact@v4
         with:
