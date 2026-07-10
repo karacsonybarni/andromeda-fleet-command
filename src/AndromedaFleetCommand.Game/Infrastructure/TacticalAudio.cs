@@ -14,6 +14,55 @@ public enum TacticalCue
 public sealed class TacticalAudio(Node owner)
 {
     private const int SampleRate = 22_050;
+    private AudioStreamPlayer? _ambient;
+    private AudioStreamWav? _ambientStream;
+
+    public void StartAmbient()
+    {
+        if (_ambient is not null) return;
+        var sampleCount = SampleRate * 2;
+        var data = new byte[sampleCount * sizeof(short)];
+        for (var index = 0; index < sampleCount; index++)
+        {
+            var time = (double)index / SampleRate;
+            var modulation = 0.72 + Math.Sin(time * Math.Tau * 0.5) * 0.12;
+            var signal = Math.Sin(time * Math.Tau * 47) * 0.52 +
+                         Math.Sin(time * Math.Tau * 71) * 0.24 +
+                         Math.Sin(time * Math.Tau * 113) * 0.08;
+            var sample = (short)Math.Clamp(signal * modulation * 0.13 * short.MaxValue,
+                short.MinValue, short.MaxValue);
+            data[index * 2] = (byte)(sample & 0xff);
+            data[index * 2 + 1] = (byte)((sample >> 8) & 0xff);
+        }
+        _ambientStream = new()
+        {
+            Format = AudioStreamWav.FormatEnum.Format16Bits,
+            MixRate = SampleRate,
+            Stereo = false,
+            Data = data,
+            LoopMode = AudioStreamWav.LoopModeEnum.Forward,
+            LoopBegin = 0,
+            LoopEnd = sampleCount
+        };
+        _ambient = new()
+        {
+            Stream = _ambientStream,
+            VolumeDb = -22
+        };
+        owner.AddChild(_ambient);
+        _ambient.Play();
+    }
+
+    public void StopAmbient()
+    {
+        if (_ambient is null || !GodotObject.IsInstanceValid(_ambient)) return;
+        _ambient.Stop();
+        _ambient.Stream = null;
+        _ambient.Free();
+        _ambient = null;
+        _ambientStream?.Dispose();
+        _ambientStream = null;
+    }
 
     public void Play(TacticalCue cue)
     {

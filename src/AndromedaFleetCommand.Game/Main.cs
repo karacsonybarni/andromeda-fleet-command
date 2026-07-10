@@ -35,6 +35,7 @@ public sealed partial class Main : Node2D
     private readonly CommandDispatcher _dispatcher = new();
     private readonly Queue<string> _log = new();
     private readonly List<Star> _stars = [];
+    private readonly Dictionary<ShipClass, Texture2D> _shipTextures = [];
     private LocalCommandInterpreter? _interpreter;
     private WhisperVoiceInput? _voiceInput;
     private TacticalAudio? _audio;
@@ -72,6 +73,9 @@ public sealed partial class Main : Node2D
 
     public override void _Ready()
     {
+        var commandArguments = OS.GetCmdlineUserArgs();
+        _smokeTest = commandArguments.Contains("--smoke-test", StringComparer.Ordinal);
+        var benchmarkMode = commandArguments.Contains("--benchmark", StringComparer.Ordinal);
         _settingsStore = new(ProjectSettings.GlobalizePath("user://settings.json"));
         _settings = _settingsStore.Load();
         _crashReports = new(ProjectSettings.GlobalizePath("user://crashes"));
@@ -82,15 +86,16 @@ public sealed partial class Main : Node2D
         _localAiSetup = new();
         RebuildLocalAiAdapters();
         _audio = new(this);
+        if (!_smokeTest && !benchmarkMode) _audio.StartAmbient();
         _progressStore = new(ProjectSettings.GlobalizePath("user://campaign-progress.json"));
         _progress = _progressStore.Load();
         CreateStars();
+        LoadShipArt();
         CreateCommandLine();
         AddLog($"Mission 1: {_simulation.Mission.Title}. Press H when ready.");
         AddLog("Enter opens the fleet command channel.");
-        _smokeTest = OS.GetCmdlineUserArgs().Contains("--smoke-test", StringComparer.Ordinal);
         StartReplayRecording();
-        if (OS.GetCmdlineUserArgs().Contains("--benchmark", StringComparer.Ordinal))
+        if (benchmarkMode)
         {
             RunBenchmark(true);
             return;
@@ -111,6 +116,7 @@ public sealed partial class Main : Node2D
         _interpreter?.Dispose();
         _localAiSetup?.Dispose();
         _crashReports?.Dispose();
+        _audio?.StopAmbient();
     }
 
     public override void _Process(double delta)
@@ -809,23 +815,41 @@ public sealed partial class Main : Node2D
         var position = ToVector(ship.Position);
         var teamColor = ship.Team == Team.Player ? Cyan : Red;
         var selected = ship.Id == _simulation.SelectedShip.Id;
+        DrawCircle(position + new Vector2(5, 7), (float)ship.Stats.Radius * 1.1f,
+            new Color(0, 0, 0, 0.32f));
         DrawSetTransform(position, (float)ship.Angle);
         if (ship.Velocity.Length > 8)
         {
-            DrawLine(new(-(float)ship.Stats.Radius, 0), new(-(float)ship.Stats.Radius - 28, 0),
-                new(teamColor, 0.78f), 8, true);
+            var thrust = Mathf.Clamp((float)(ship.Velocity.Length / ship.EffectiveMaxSpeed), 0.2f, 1);
+            DrawLine(new(-(float)ship.Stats.Radius * 1.35f, 0),
+                new(-(float)ship.Stats.Radius * 1.35f - 34 * thrust, 0),
+                new(teamColor, 0.34f), 14, true);
+            DrawLine(new(-(float)ship.Stats.Radius * 1.35f, 0),
+                new(-(float)ship.Stats.Radius * 1.35f - 29 * thrust, 0),
+                new(teamColor, 0.9f), 4, true);
         }
-        var hull = CreateHull(ship);
-        DrawColoredPolygon(hull, new Color("17273b"));
-        DrawPolyline(hull.Append(hull[0]).ToArray(), selected ? Colors.White : teamColor, selected ? 3 : 1.7f, true);
-        DrawLine(new(-(float)ship.Stats.Radius * 0.35f, 0), new((float)ship.Stats.Radius * 0.72f, 0),
-            new(teamColor, 0.75f), 2);
+        if (_shipTextures.TryGetValue(ship.Class, out var texture))
+        {
+            var radius = (float)ship.Stats.Radius;
+            DrawTextureRect(texture, new Rect2(-radius * 1.65f, -radius * 0.85f,
+                radius * 3.3f, radius * 1.7f), false, new Color(teamColor, 0.96f));
+        }
+        else
+        {
+            var hull = CreateHull(ship);
+            DrawColoredPolygon(hull, new Color("17273b"));
+            DrawPolyline(hull.Append(hull[0]).ToArray(), selected ? Colors.White : teamColor,
+                selected ? 3 : 1.7f, true);
+        }
         DrawSetTransform(Vector2.Zero, 0);
 
         if (selected)
         {
             DrawArc(position, (float)ship.Stats.Radius + 14, 0, Mathf.Tau, 64, Colors.White, 2);
         }
+        if (ship.ShieldRatio > 0.05)
+            DrawArc(position, (float)ship.Stats.Radius + 8, -0.8f, 0.8f, 28,
+                new(teamColor, (float)(0.12 + ship.ShieldRatio * 0.28)), 3);
         DrawLabel(ship.Name.ToUpperInvariant(), position + new Vector2(0, -(float)ship.Stats.Radius - 18),
             12, teamColor, HorizontalAlignment.Center, 130);
         DrawBar(new(position.X - 50, position.Y - (float)ship.Stats.Radius - 8), 100, 4,
@@ -1217,6 +1241,16 @@ public sealed partial class Main : Node2D
                 0.7f + (float)random.NextDouble() * 2.3f,
                 0.25f + (float)random.NextDouble() * 0.7f,
                 random.NextDouble() < 0.42));
+        }
+    }
+
+    private void LoadShipArt()
+    {
+        foreach (var shipClass in Enum.GetValues<ShipClass>())
+        {
+            var name = shipClass.ToString().ToLowerInvariant();
+            if (GD.Load<Texture2D>($"res://art/ships/{name}.svg") is { } texture)
+                _shipTextures[shipClass] = texture;
         }
     }
 

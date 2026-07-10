@@ -14,11 +14,13 @@
 
 ## Indiegogo demo
 
-- [ ] Replace procedural ships with a coherent original 3D art set
+- [x] Replace procedural silhouettes with a coherent six-class scalable vector fleet set
+- [ ] Final art-direction, animation, VFX, and store-quality capture pass
 - [x] Three playable missions with escalating objectives and command complexity
 - [ ] Tune each mission to 8–12 minutes using external playtest data
 - [x] Procedural acknowledgements, weapons, abilities, tactical alerts, and victory cues
-- [ ] Engine ambience, professional sound design, mix pass, and voice performances
+- [x] Continuous procedural engine-room ambience
+- [ ] Professional sound-design and mix pass plus voice performances
 - [x] Guided onboarding for switching ships, issuing the first order, and using an ability
 - [ ] Validate a first satisfying spoken order within two minutes on supported hardware
 - [x] In-game local-AI readiness diagnostics, Ollama pull, and speech-model download
