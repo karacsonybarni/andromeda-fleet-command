@@ -79,9 +79,11 @@ working.
 
 ## Multiplayer strategy
 
-The future multiplayer model is server-authoritative. Clients send compact,
-validated player commands; the server owns simulation state. Determinism also
-supports command-log replays and desynchronization diagnostics.
+The multiplayer model is server-authoritative. The implemented session core
+accepts commands only for assigned ships, rejects duplicate sequences and
+out-of-window ticks, advances the fixed-step simulation, and emits checksummed
+snapshots. Production transport, Steam lobbies/relay, reconnection, and
+adversarial security testing remain outside the pure simulation layer.
 
 ## Steam strategy
 

@@ -28,6 +28,8 @@ Ollama model and whisper.cpp.
 - Automatic local crash reports under the Godot user-data directory
 - Deterministic input replays with final-state checksum verification
 - Built-in three-mission simulation benchmark and structured GitHub feedback forms
+- Optional GodotSteam achievement adapter and deterministic authoritative-session core
+- Tagged CI workflow for checksummed Windows and Linux demo packages
 - Procedural acknowledgements, weapon, ability, alert, and victory audio cues
 - Continuous low-frequency engine-room ambience
 - Deterministic fixed-step simulation suitable for replays and multiplayer
@@ -137,8 +139,9 @@ Install Godot export templates, then:
 ./scripts/export.sh linux
 ~~~
 
-Steamworks will sit behind a platform-services adapter; an App ID is not
-required for local development.
+Steamworks sits behind a platform-services adapter; an App ID is not required
+for local development. See [docs/STEAM.md](docs/STEAM.md) for the implemented
+adapter, packaging workflow, and owner-only release inputs.
 
 ## Contribute
 

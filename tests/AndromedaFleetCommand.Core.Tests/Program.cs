@@ -2,6 +2,7 @@ using AndromedaFleetCommand.Core.Commands;
 using AndromedaFleetCommand.Core.Configuration;
 using AndromedaFleetCommand.Core.Model;
 using AndromedaFleetCommand.Core.Missions;
+using AndromedaFleetCommand.Core.Multiplayer;
 using AndromedaFleetCommand.Core.Replay;
 using AndromedaFleetCommand.Core.Simulation;
 
@@ -29,7 +30,10 @@ var tests = new (string Name, Action Body)[]
     ("Game settings persist and recover safely", GameSettingsPersistSafely),
     ("Recorded battles replay to the same checksum", RecordedBattlesReplayDeterministically),
     ("Replay files persist and recover safely", ReplayFilesPersistSafely),
-    ("Simulation checksum detects state changes", SimulationChecksumDetectsChanges)
+    ("Simulation checksum detects state changes", SimulationChecksumDetectsChanges),
+    ("Authoritative session rejects unauthorized commands", AuthoritativeSessionRejectsUnauthorizedCommands),
+    ("Authoritative session applies owned commands", AuthoritativeSessionAppliesOwnedCommands),
+    ("Authoritative sessions remain deterministic", AuthoritativeSessionsRemainDeterministic)
 };
 
 var failures = 0;
@@ -416,6 +420,51 @@ static void SimulationChecksumDetectsChanges()
     simulation.Update(BattleSimulation.FixedStep);
     var after = SimulationChecksum.Compute(simulation);
     True(!before.Equals(after, StringComparison.Ordinal), "Checksum changes with simulation state");
+}
+
+static void AuthoritativeSessionRejectsUnauthorizedCommands()
+{
+    var session = new AuthoritativeFleetSession(MissionId.BlackSun, 44);
+    session.AssignPlayer("captain", "player-frigate");
+    var enemy = session.Submit(new(1, 0, "captain", "enemy-flagship", OrderType.Attack, "player flagship"));
+    True(!enemy.Accepted, "Players cannot command enemy ships");
+    var unowned = session.Submit(new(2, 0, "captain", "player-carrier", OrderType.Attack, "enemy flagship"));
+    True(!unowned.Accepted, "Players cannot command another player's ship");
+    var unknown = session.Submit(new(3, 0, "intruder", "player-frigate", OrderType.Attack, "enemy flagship"));
+    True(!unknown.Accepted, "Unknown players are rejected");
+}
+
+static void AuthoritativeSessionAppliesOwnedCommands()
+{
+    var session = new AuthoritativeFleetSession(MissionId.BlackSun, 45);
+    session.AssignPlayer("captain", "player-frigate");
+    var command = new NetworkFleetCommand(1, 0, "captain", "player-frigate",
+        OrderType.Attack, "enemy flagship");
+    True(session.Submit(command).Accepted, "Owned command is admitted");
+    True(!session.Submit(command).Accepted, "Duplicate sequence is rejected");
+    var snapshot = session.Step();
+    Equal(1, snapshot.ServerTick, "Server tick advances");
+    Equal(OrderType.Attack, session.Simulation.FindShip("player-frigate")!.Order.Type,
+        "Accepted command reaches the simulation");
+    Equal("enemy-flagship", session.Simulation.FindShip("player-frigate")!.Order.TargetId,
+        "Server resolves the target");
+}
+
+static void AuthoritativeSessionsRemainDeterministic()
+{
+    var left = new AuthoritativeFleetSession(MissionId.BrokenShield, 46);
+    var right = new AuthoritativeFleetSession(MissionId.BrokenShield, 46);
+    foreach (var session in new[] { left, right })
+    {
+        session.AssignPlayer("captain", "player-frigate");
+        session.Submit(new(1, 0, "captain", "player-frigate", OrderType.Intercept, "nearest bomber"));
+    }
+    for (var tick = 0; tick < 600; tick++)
+    {
+        var a = left.Step();
+        var b = right.Step();
+        Equal(a.Checksum, b.Checksum, "Authoritative checksum remains deterministic");
+    }
 }
 
 static void True(bool condition, string message)
