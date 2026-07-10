@@ -1,6 +1,7 @@
 using System.Net.Http.Json;
 using System.Text.Json.Serialization;
 using AndromedaFleetCommand.Core.Commands;
+using AndromedaFleetCommand.Core.Configuration;
 
 namespace AndromedaFleetCommand.Game.Infrastructure;
 
@@ -12,12 +13,17 @@ public sealed class LocalCommandInterpreter : ICommandInterpreter, IDisposable
     private readonly string _model;
 
     public LocalCommandInterpreter(RuleBasedCommandInterpreter fallback)
+        : this(fallback, LocalAiConfiguration.ApplyEnvironment(LocalAiConfiguration.Default))
+    {
+    }
+
+    public LocalCommandInterpreter(RuleBasedCommandInterpreter fallback, LocalAiConfiguration configuration)
     {
         _fallback = fallback;
-        _enabled = bool.TryParse(Environment.GetEnvironmentVariable("AFC_OLLAMA"), out var enabled) && enabled;
-        _model = Environment.GetEnvironmentVariable("AFC_OLLAMA_MODEL") ?? "qwen3:4b";
-        var endpoint = Environment.GetEnvironmentVariable("AFC_OLLAMA_URL") ?? "http://127.0.0.1:11434/";
-        _client = new() { BaseAddress = new(endpoint), Timeout = TimeSpan.FromSeconds(10) };
+        var normalized = configuration.Normalize();
+        _enabled = normalized.OllamaEnabled;
+        _model = normalized.OllamaModel;
+        _client = new() { BaseAddress = new(normalized.OllamaUrl), Timeout = TimeSpan.FromSeconds(10) };
     }
 
     public async Task<CommandParseResult> InterpretAsync(

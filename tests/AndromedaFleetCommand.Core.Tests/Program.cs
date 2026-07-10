@@ -1,4 +1,5 @@
 using AndromedaFleetCommand.Core.Commands;
+using AndromedaFleetCommand.Core.Configuration;
 using AndromedaFleetCommand.Core.Model;
 using AndromedaFleetCommand.Core.Missions;
 using AndromedaFleetCommand.Core.Simulation;
@@ -20,7 +21,9 @@ var tests = new (string Name, Action Body)[]
     ("Every campaign mission survives integration play", EveryMissionSurvivesIntegrationPlay),
     ("Campaign progression unlocks missions sequentially", CampaignProgressionUnlocksMissions),
     ("Campaign progress persists and recovers safely", CampaignProgressPersistsSafely),
-    ("Tutorial advances only through intended actions", TutorialAdvancesInOrder)
+    ("Tutorial advances only through intended actions", TutorialAdvancesInOrder),
+    ("Local AI configuration enforces local endpoints", LocalAiConfigurationEnforcesLocalEndpoints),
+    ("Local AI configuration persists safely", LocalAiConfigurationPersistsSafely)
 };
 
 var failures = 0;
@@ -271,6 +274,47 @@ static void TutorialAdvancesInOrder()
     True(tutorial.Notify(TutorialAction.ActivateAbility), "Ability step advances");
     True(tutorial.IsComplete, "Tutorial completes");
     Equal(3, tutorial.CompletedSteps, "Tutorial reports completed steps");
+}
+
+static void LocalAiConfigurationEnforcesLocalEndpoints()
+{
+    var remote = LocalAiConfiguration.Default with
+    {
+        OllamaEnabled = true,
+        OllamaUrl = "https://example.com/hosted-model",
+        OllamaModel = "  "
+    };
+    var normalized = remote.Normalize();
+    Equal(LocalAiConfiguration.Default.OllamaUrl, normalized.OllamaUrl,
+        "Hosted endpoints are replaced with loopback");
+    Equal(LocalAiConfiguration.Default.OllamaModel, normalized.OllamaModel,
+        "Blank models use the local default");
+    True(normalized.OllamaEnabled, "Endpoint normalization does not silently change the user's toggle");
+}
+
+static void LocalAiConfigurationPersistsSafely()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"afc-ai-tests-{Guid.NewGuid():N}");
+    var path = Path.Combine(directory, "local-ai.json");
+    try
+    {
+        var store = new LocalAiConfigurationStore(path);
+        var expected = LocalAiConfiguration.Default with
+        {
+            OllamaEnabled = true,
+            OllamaModel = "qwen3:4b",
+            WhisperCli = Path.Combine(directory, "whisper-cli"),
+            WhisperModel = Path.Combine(directory, "ggml-base.en.bin")
+        };
+        store.Save(expected);
+        Equal(expected.Normalize(), store.Load(), "Local AI configuration round-trips");
+        File.WriteAllText(path, "not json");
+        Equal(LocalAiConfiguration.Default, store.Load(), "Corrupt local AI settings recover safely");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
 }
 
 static void True(bool condition, string message)

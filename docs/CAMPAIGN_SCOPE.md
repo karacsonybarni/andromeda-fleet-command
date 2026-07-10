@@ -10,6 +10,7 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Manual flight, weapons, and four role-specific tactical abilities
 - Typed natural-language orders with a safe offline parser
 - Optional local Ollama interpretation and whisper.cpp push-to-talk adapters
+- In-game readiness diagnostics, Ollama model pull, whisper-cli discovery, and speech-model download
 - Three sequential missions: First Command, Broken Shield, and Black Sun
 - Mission-specific objectives, protected-ship failure conditions, unlocks, and local saves
 - Guided first mission and procedural tactical audio cues
@@ -18,7 +19,7 @@ and long-term Steam goals from being mixed together in campaign copy.
 ## Required before the Indiegogo demo is called complete
 
 - Coherent production art replacing procedural ship silhouettes
-- One-click local speech/model setup with measured latency and hardware requirements
+- Bundled whisper.cpp executables and measured voice/model latency requirements
 - Mission-duration balancing from external playtests
 - Professional audio, engine ambience, and final mix
 - Signed Windows and Linux demo packages
