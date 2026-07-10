@@ -29,7 +29,8 @@
 - [x] Reproducible three-mission simulation benchmark harness
 - [x] Automatic local crash reports
 - [x] Structured in-game GitHub feedback and bug-report forms
-- [ ] Trailer capture and downloadable demo
+- [ ] Trailer capture
+- [x] Downloadable unsigned Windows/Linux demo artifacts with Linux launch validation
 
 ## Steam alpha
 
