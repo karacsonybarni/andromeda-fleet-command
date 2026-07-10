@@ -1,4 +1,5 @@
 using AndromedaFleetCommand.Core.Model;
+using AndromedaFleetCommand.Core.Missions;
 
 namespace AndromedaFleetCommand.Core.Simulation;
 
@@ -13,19 +14,32 @@ public sealed class BattleSimulation
     private readonly List<CombatEvent> _events = [];
     private string _selectedShipId = "player-flagship";
     private ManualInput _manualInput;
+    private MissionDefinition _mission;
+    private int _objectiveTotal;
 
     public BattleSimulation(long seed = 0xAFC2026)
     {
+        _mission = MissionCatalog.Get(MissionId.BlackSun);
         Seed = seed;
         Reset();
     }
 
-    public long Seed { get; }
+    public BattleSimulation(MissionId missionId, long? seed = null)
+    {
+        _mission = MissionCatalog.Get(missionId);
+        Seed = seed ?? _mission.Seed;
+        Reset();
+    }
+
+    public long Seed { get; private set; }
+    public MissionDefinition Mission => _mission;
     public IReadOnlyList<Ship> Ships => _ships;
     public IReadOnlyList<Projectile> Projectiles => _projectiles;
     public IReadOnlyList<CombatEvent> Events => _events;
     public BattleStatus Status { get; private set; }
     public double ElapsedSeconds { get; private set; }
+    public double InitialPlayerStrength { get; private set; }
+    public double InitialEnemyStrength { get; private set; }
     public Ship SelectedShip =>
         FindShip(_selectedShipId) is { IsAlive: true } selected
             ? selected
@@ -40,32 +54,47 @@ public sealed class BattleSimulation
         Status = BattleStatus.Active;
         _manualInput = ManualInput.None;
 
-        AddPlayer("player-flagship", "Flagship", ShipClass.Flagship, 260, 450, 0);
-        AddPlayer("player-carrier", "Carrier One", ShipClass.Carrier, 205, 265, 0.08);
-        AddPlayer("player-frigate", "Frigate Two", ShipClass.Frigate, 330, 335, -0.04);
-        AddPlayer("player-destroyer", "Destroyer Three", ShipClass.Destroyer, 260, 620, 0.03);
+        foreach (var spawn in _mission.Ships)
+            _ships.Add(new(spawn.Id, spawn.Name, spawn.Class, spawn.Team, spawn.Position, spawn.Angle));
 
-        AddEnemy("enemy-flagship", "Enemy Flagship", ShipClass.Flagship, 1340, 450, Math.PI);
-        AddEnemy("enemy-carrier", "Enemy Carrier", ShipClass.Carrier, 1390, 235, Math.PI);
-        AddEnemy("enemy-destroyer-1", "Enemy Destroyer One", ShipClass.Destroyer, 1250, 300, Math.PI);
-        AddEnemy("enemy-destroyer-2", "Enemy Destroyer Two", ShipClass.Destroyer, 1270, 650, Math.PI);
-        AddEnemy("enemy-bomber-1", "Bomber One", ShipClass.Bomber, 1170, 220, Math.PI);
-        AddEnemy("enemy-bomber-2", "Bomber Two", ShipClass.Bomber, 1210, 185, Math.PI);
-        AddEnemy("enemy-bomber-3", "Bomber Three", ShipClass.Bomber, 1205, 730, Math.PI);
-        AddEnemy("enemy-escort-1", "Enemy Escort One", ShipClass.Escort, 1300, 540, Math.PI);
-        AddEnemy("enemy-escort-2", "Enemy Escort Two", ShipClass.Escort, 1320, 580, Math.PI);
-
-        _selectedShipId = "player-flagship";
+        _selectedShipId = _ships.First(ship => ship.Team == Team.Player).Id;
         SelectedShip.IsManuallyControlled = true;
-        FindShip("player-carrier")!.Order = new(OrderType.Defend, "player-flagship");
-        FindShip("player-frigate")!.Order = new(OrderType.Intercept, "enemy-bomber-1");
-        FindShip("player-destroyer")!.Order = new(OrderType.Attack, "enemy-flagship");
-        foreach (var enemy in _ships.Where(ship => ship.Team == Team.Enemy))
+        foreach (var order in _mission.InitialOrders)
         {
-            enemy.Order = new(OrderType.Attack,
-                enemy.Class == ShipClass.Bomber ? "player-carrier" : "player-flagship");
+            if (FindShip(order.ShipId) is { } ship)
+                ship.Order = new(order.Type, order.TargetId, order.Destination);
         }
-        AddOrderEvent("Battle joined. Command the fleet.");
+        _objectiveTotal = CountObjectiveTargets();
+        InitialPlayerStrength = FleetStrength(Team.Player);
+        InitialEnemyStrength = FleetStrength(Team.Enemy);
+        AddOrderEvent($"Mission joined: {_mission.Title}.");
+    }
+
+    public void LoadMission(MissionId missionId)
+    {
+        _mission = MissionCatalog.Get(missionId);
+        Seed = _mission.Seed;
+        Reset();
+    }
+
+    public MissionObjectiveProgress ObjectiveProgress
+    {
+        get
+        {
+            var objective = _mission.Objective;
+            if (objective.Kind == MissionObjectiveKind.DestroyTarget)
+            {
+                var target = objective.TargetId is null ? null : FindShip(objective.TargetId);
+                var targetRatio = target?.HullRatio ?? 0;
+                return new($"{(int)Math.Round(targetRatio * 100)}% target hull", targetRatio,
+                    target is { IsAlive: true } ? 1 : 0, 1);
+            }
+
+            var remaining = _ships.Count(ship => ship.IsAlive && ship.Team == Team.Enemy &&
+                                                  ship.Class == objective.TargetClass);
+            var classRatio = _objectiveTotal == 0 ? 0 : (double)remaining / _objectiveTotal;
+            return new($"{remaining}/{_objectiveTotal} bombers remaining", classRatio, remaining, _objectiveTotal);
+        }
     }
 
     public void Update(double delta)
@@ -370,20 +399,42 @@ public sealed class BattleSimulation
 
     private void UpdateBattleStatus()
     {
-        var playerFlagshipAlive = FindShip("player-flagship")?.IsAlive == true;
-        var enemyFlagshipAlive = FindShip("enemy-flagship")?.IsAlive == true;
+        if (Status != BattleStatus.Active) return;
+        var objective = _mission.Objective;
+        var protectedShipAlive = objective.ProtectedShipId is null ||
+                                 FindShip(objective.ProtectedShipId)?.IsAlive == true;
         var anyPlayerAlive = _ships.Any(ship => ship.IsAlive && ship.Team == Team.Player);
-        var anyEnemyAlive = _ships.Any(ship => ship.IsAlive && ship.Team == Team.Enemy);
-        if (!enemyFlagshipAlive || !anyEnemyAlive)
+        var objectiveComplete = objective.Kind switch
+        {
+            MissionObjectiveKind.DestroyTarget =>
+                objective.TargetId is not null && FindShip(objective.TargetId)?.IsAlive != true,
+            MissionObjectiveKind.EliminateClass =>
+                !_ships.Any(ship => ship.IsAlive && ship.Team == Team.Enemy &&
+                                   ship.Class == objective.TargetClass),
+            _ => false
+        };
+        if (objectiveComplete)
         {
             Status = BattleStatus.PlayerVictory;
-            AddOrderEvent("Enemy flagship destroyed. Victory.");
+            AddOrderEvent($"Objective complete: {objective.Title}.");
         }
-        else if (!playerFlagshipAlive || !anyPlayerAlive)
+        else if (!protectedShipAlive || !anyPlayerAlive)
         {
             Status = BattleStatus.EnemyVictory;
-            AddOrderEvent("Flagship lost. The fleet is in retreat.");
+            AddOrderEvent("Mission failed. The fleet is in retreat.");
         }
+    }
+
+    private int CountObjectiveTargets()
+    {
+        var objective = _mission.Objective;
+        return objective.Kind switch
+        {
+            MissionObjectiveKind.DestroyTarget => 1,
+            MissionObjectiveKind.EliminateClass => _ships.Count(ship =>
+                ship.Team == Team.Enemy && ship.Class == objective.TargetClass),
+            _ => 0
+        };
     }
 
     private Ship? NearestEnemy(Ship source, double maximumDistance) =>
@@ -401,12 +452,6 @@ public sealed class BattleSimulation
         while (difference < -Math.PI) difference += Math.PI * 2;
         return difference;
     }
-
-    private void AddPlayer(string id, string name, ShipClass shipClass, double x, double y, double angle) =>
-        _ships.Add(new(id, name, shipClass, Team.Player, new(x, y), angle));
-
-    private void AddEnemy(string id, string name, ShipClass shipClass, double x, double y, double angle) =>
-        _ships.Add(new(id, name, shipClass, Team.Enemy, new(x, y), angle));
 
     private static int PositiveModulo(int value, int modulo) => (value % modulo + modulo) % modulo;
 }

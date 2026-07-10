@@ -32,3 +32,6 @@ visual parity.
 - Publish the repository before launch so “open source” is independently
   verifiable.
 - Use stretch goals only for features that do not threaten the core demo.
+
+The canonical implementation matrix is [CAMPAIGN_SCOPE.md](CAMPAIGN_SCOPE.md).
+Campaign copy must be updated whenever that matrix changes.
