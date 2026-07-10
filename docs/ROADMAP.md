@@ -15,9 +15,12 @@
 ## Indiegogo demo
 
 - [ ] Replace procedural ships with a coherent original 3D art set
-- [ ] Audio identity: engines, acknowledgements, weapons, and tactical alerts
-- [ ] Three ten-minute missions with escalating command complexity
-- [ ] Onboarding that reaches the first satisfying spoken order in two minutes
+- [x] Three playable missions with escalating objectives and command complexity
+- [ ] Tune each mission to 8–12 minutes using external playtest data
+- [x] Procedural acknowledgements, weapons, abilities, tactical alerts, and victory cues
+- [ ] Engine ambience, professional sound design, mix pass, and voice performances
+- [x] Guided onboarding for switching ships, issuing the first order, and using an ability
+- [ ] Validate a first satisfying spoken order within two minutes on supported hardware
 - [ ] Embedded, one-click local speech and small-LLM model setup
 - [ ] Performance capture on Steam Deck and mid-range Windows hardware
 - [ ] Trailer capture, downloadable demo, crash reporting, and feedback form
@@ -30,3 +33,5 @@
 - [ ] Signed Windows and Linux packages
 - [ ] Steam Deck verification work
 - [ ] Playtest branch and public issue templates
+
+See [CAMPAIGN_SCOPE.md](CAMPAIGN_SCOPE.md) for the promise-by-promise status.

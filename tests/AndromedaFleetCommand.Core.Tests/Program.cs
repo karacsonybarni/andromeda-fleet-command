@@ -1,5 +1,6 @@
 using AndromedaFleetCommand.Core.Commands;
 using AndromedaFleetCommand.Core.Model;
+using AndromedaFleetCommand.Core.Missions;
 using AndromedaFleetCommand.Core.Simulation;
 
 var tests = new (string Name, Action Body)[]
@@ -13,7 +14,13 @@ var tests = new (string Name, Action Body)[]
     ("Dispatcher assigns bounded orders", DispatcherAssignsOrders),
     ("Ship abilities are bounded by cooldowns", ShipAbilitiesUseCooldowns),
     ("Damage and victory rules work", DamageAndVictoryRules),
-    ("Long battle maintains invariants", LongBattleMaintainsInvariants)
+    ("Long battle maintains invariants", LongBattleMaintainsInvariants),
+    ("Mission catalog is internally valid", MissionCatalogIsValid),
+    ("Mission objectives determine victory and defeat", MissionObjectivesDetermineStatus),
+    ("Every campaign mission survives integration play", EveryMissionSurvivesIntegrationPlay),
+    ("Campaign progression unlocks missions sequentially", CampaignProgressionUnlocksMissions),
+    ("Campaign progress persists and recovers safely", CampaignProgressPersistsSafely),
+    ("Tutorial advances only through intended actions", TutorialAdvancesInOrder)
 };
 
 var failures = 0;
@@ -155,6 +162,115 @@ static void LongBattleMaintainsInvariants()
         True(ship.Hull >= 0 && ship.Shield >= 0, "Damage values remain non-negative");
     }
     True(simulation.ElapsedSeconds > 5, "Integration battle advances through meaningful combat");
+}
+
+static void MissionCatalogIsValid()
+{
+    Equal(3, MissionCatalog.All.Count, "Indiegogo demo mission count");
+    Equal(3, MissionCatalog.All.Select(mission => mission.Id).Distinct().Count(), "Mission IDs are unique");
+    foreach (var mission in MissionCatalog.All)
+    {
+        True(mission.Ships.Any(ship => ship.Team == Team.Player), $"{mission.Title} has a player fleet");
+        True(mission.Ships.Any(ship => ship.Team == Team.Enemy), $"{mission.Title} has enemies");
+        var ids = mission.Ships.Select(ship => ship.Id).ToHashSet(StringComparer.Ordinal);
+        Equal(mission.Ships.Count, ids.Count, $"{mission.Title} ship IDs are unique");
+        foreach (var order in mission.InitialOrders)
+        {
+            True(ids.Contains(order.ShipId), $"{mission.Title} order subject exists");
+            True(order.TargetId is null || ids.Contains(order.TargetId), $"{mission.Title} order target exists");
+        }
+        True(mission.Objective.TargetId is null || ids.Contains(mission.Objective.TargetId),
+            $"{mission.Title} objective target exists");
+        True(mission.Objective.ProtectedShipId is null || ids.Contains(mission.Objective.ProtectedShipId),
+            $"{mission.Title} protected ship exists");
+    }
+}
+
+static void MissionObjectivesDetermineStatus()
+{
+    var first = new BattleSimulation(MissionId.FirstCommand);
+    first.FindShip("enemy-raider-leader")!.ApplyDamage(10_000);
+    first.Update(BattleSimulation.FixedStep);
+    Equal(BattleStatus.PlayerVictory, first.Status, "Destroy-target mission victory");
+
+    var defence = new BattleSimulation(MissionId.BrokenShield);
+    foreach (var bomber in defence.Ships.Where(ship => ship.Team == Team.Enemy && ship.Class == ShipClass.Bomber))
+        bomber.ApplyDamage(10_000);
+    defence.Update(BattleSimulation.FixedStep);
+    Equal(BattleStatus.PlayerVictory, defence.Status, "Class-elimination mission victory");
+    Equal(0, defence.ObjectiveProgress.Remaining, "No bombers remain");
+
+    var failed = new BattleSimulation(MissionId.BrokenShield);
+    failed.FindShip("player-carrier")!.ApplyDamage(10_000);
+    failed.Update(BattleSimulation.FixedStep);
+    Equal(BattleStatus.EnemyVictory, failed.Status, "Losing protected carrier fails mission");
+}
+
+static void EveryMissionSurvivesIntegrationPlay()
+{
+    var parser = new RuleBasedCommandInterpreter();
+    var dispatcher = new CommandDispatcher();
+    foreach (var mission in MissionCatalog.All)
+    {
+        var simulation = new BattleSimulation(mission.Id);
+        var command = parser.Parse("All ships, attack the nearest enemy").Command!;
+        dispatcher.Dispatch(command, simulation);
+        for (var tick = 0; tick < 60 * 30 && simulation.Status == BattleStatus.Active; tick++)
+            simulation.Update(BattleSimulation.FixedStep);
+        foreach (var ship in simulation.Ships)
+        {
+            True(ship.Position.IsFinite && ship.Velocity.IsFinite, $"{mission.Title} remains finite");
+            True(ship.Hull >= 0 && ship.Shield >= 0, $"{mission.Title} damage remains bounded");
+        }
+        True(simulation.ElapsedSeconds > 2, $"{mission.Title} advances under integration load");
+    }
+}
+
+static void CampaignProgressionUnlocksMissions()
+{
+    var progress = CampaignProgress.New;
+    True(progress.IsUnlocked(0), "First mission starts unlocked");
+    True(!progress.IsUnlocked(1), "Second mission starts locked");
+    progress = progress.Complete(MissionId.FirstCommand);
+    True(progress.IsUnlocked(1), "Completing first unlocks second");
+    progress = progress.Complete(MissionId.BrokenShield);
+    True(progress.IsUnlocked(2), "Completing second unlocks third");
+    progress = progress.Complete(MissionId.BlackSun);
+    Equal(2, progress.HighestUnlockedMission, "Progress clamps at final mission");
+    Equal(3, progress.CompletedMissions.Count, "Every mission can be completed");
+}
+
+static void CampaignProgressPersistsSafely()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"afc-tests-{Guid.NewGuid():N}");
+    var path = Path.Combine(directory, "campaign.json");
+    try
+    {
+        var store = new CampaignProgressStore(path);
+        Equal(0, store.Load().HighestUnlockedMission, "Missing save starts a new campaign");
+        var expected = CampaignProgress.New.Complete(MissionId.FirstCommand);
+        store.Save(expected);
+        var actual = store.Load();
+        Equal(1, actual.HighestUnlockedMission, "Unlocked mission round-trips");
+        True(actual.IsCompleted(MissionId.FirstCommand), "Completed mission round-trips");
+        File.WriteAllText(path, "{not valid json");
+        Equal(0, store.Load().HighestUnlockedMission, "Corrupt save falls back safely");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static void TutorialAdvancesInOrder()
+{
+    var tutorial = new TutorialTracker();
+    True(!tutorial.Notify(TutorialAction.IssueOrder), "Cannot skip switch-ship step");
+    True(tutorial.Notify(TutorialAction.SwitchShip), "Switch step advances");
+    True(tutorial.Notify(TutorialAction.IssueOrder), "Order step advances");
+    True(tutorial.Notify(TutorialAction.ActivateAbility), "Ability step advances");
+    True(tutorial.IsComplete, "Tutorial completes");
+    Equal(3, tutorial.CompletedSteps, "Tutorial reports completed steps");
 }
 
 static void True(bool condition, string message)

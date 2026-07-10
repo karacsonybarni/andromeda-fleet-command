@@ -12,16 +12,18 @@ The runtime is local-first. The trusted offline command parser, simulation, and
 ship pilots need no hosted service. Optional integrations can use a local
 Ollama model and whisper.cpp.
 
-## Current playable vertical slice
+## Current playable campaign demo
 
-- One complete fleet battle with victory and defeat conditions
+- Three sequential missions with distinct objectives and escalating fleet complexity
+- Mission briefings, first-command onboarding, unlocks, and persistent campaign progress
 - Four switchable allied ships with different handling and tactical abilities
 - Manual thrust, steering, and weapons
 - Natural-language typed fleet commands
 - Optional local Ollama interpretation with safe offline fallback
 - Optional local whisper.cpp push-to-talk
+- Procedural acknowledgements, weapon, ability, alert, and victory audio cues
 - Deterministic fixed-step simulation suitable for replays and multiplayer
-- Automated parser, combat, determinism, command, and endurance tests
+- Automated parser, combat, mission, persistence, determinism, command, and endurance tests
 
 ## Technology
 
@@ -64,6 +66,8 @@ powershell -ExecutionPolicy Bypass -File scripts/run.ps1
 - P: pause
 - H: help
 - R: restart
+- M: mission selection
+- N: next mission after victory
 - Esc: cancel or quit
 
 Try:

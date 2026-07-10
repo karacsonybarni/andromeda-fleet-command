@@ -10,7 +10,7 @@ Command:
 dotnet run --project tests/AndromedaFleetCommand.Core.Tests
 ~~~
 
-Result: **10 tests, 0 failures**.
+Result: **16 tests, 0 failures**.
 
 Coverage includes:
 
@@ -18,6 +18,9 @@ Coverage includes:
 - natural-language attack, intercept, defend, move, and retreat parsing
 - safe rejection of unknown commands
 - deterministic replay-equivalent simulation
+- all three mission definitions and objective outcomes
+- sequential campaign unlocks and corrupt-save recovery
+- first-command tutorial step ordering
 - manual control and speed limits
 - validated command dispatch
 - tactical-ability cooldowns
@@ -48,7 +51,7 @@ in a normal Godot .NET installation.
 Expected smoke marker:
 
 ~~~text
-AFC_SMOKE_PASS ships=13 projectiles=...
+AFC_SMOKE_PASS ships=5 projectiles=...
 ~~~
 
 ## Remaining manual checks

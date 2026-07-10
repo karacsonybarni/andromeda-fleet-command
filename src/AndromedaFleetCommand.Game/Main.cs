@@ -1,5 +1,6 @@
 using AndromedaFleetCommand.Core.Commands;
 using AndromedaFleetCommand.Core.Model;
+using AndromedaFleetCommand.Core.Missions;
 using AndromedaFleetCommand.Core.Simulation;
 using AndromedaFleetCommand.Game.Infrastructure;
 using Godot;
@@ -14,13 +15,14 @@ public sealed partial class Main : Node2D
     private static readonly Color Orange = new("ff9b42");
     private static readonly Color Panel = new(0.015f, 0.06f, 0.11f, 0.9f);
 
-    private readonly BattleSimulation _simulation = new();
+    private readonly BattleSimulation _simulation = new(MissionId.FirstCommand);
     private readonly RuleBasedCommandInterpreter _rules = new();
     private readonly CommandDispatcher _dispatcher = new();
     private readonly Queue<string> _log = new();
     private readonly List<Star> _stars = [];
     private LocalCommandInterpreter? _interpreter;
     private WhisperVoiceInput? _voiceInput;
+    private TacticalAudio? _audio;
     private LineEdit? _commandLine;
     private double _accumulator;
     private bool _paused;
@@ -29,20 +31,30 @@ public sealed partial class Main : Node2D
     private string _status = "Press H when ready";
     private double _statusTime = 5;
     private bool _smokeTest;
+    private CampaignProgressStore? _progressStore;
+    private CampaignProgress _progress = CampaignProgress.New;
+    private TutorialTracker _tutorial = new();
+    private bool _showMissionSelect;
+    private BattleStatus _observedBattleStatus = BattleStatus.Active;
+    private int _previousProjectileCount;
+    private double _weaponAudioCooldown;
 
     public override void _Ready()
     {
         _interpreter = new(_rules);
         _voiceInput = new(this);
+        _audio = new(this);
+        _progressStore = new(ProjectSettings.GlobalizePath("user://campaign-progress.json"));
+        _progress = _progressStore.Load();
         CreateStars();
         CreateCommandLine();
-        AddLog("Battle joined. Press H when ready.");
+        AddLog($"Mission 1: {_simulation.Mission.Title}. Press H when ready.");
         AddLog("Enter opens the fleet command channel.");
         _smokeTest = OS.GetCmdlineUserArgs().Contains("--smoke-test", StringComparer.Ordinal);
         if (_smokeTest)
         {
             _showHelp = false;
-            var command = _rules.Parse("All ships, attack the enemy flagship").Command!;
+            var command = _rules.Parse("All ships, attack the nearest enemy").Command!;
             _dispatcher.Dispatch(command, _simulation);
         }
         GetViewport().SizeChanged += QueueRedraw;
@@ -57,6 +69,7 @@ public sealed partial class Main : Node2D
 
     public override void _Process(double delta)
     {
+        _weaponAudioCooldown = Math.Max(0, _weaponAudioCooldown - delta);
         if (_statusTime > 0)
         {
             _statusTime -= delta;
@@ -78,6 +91,13 @@ public sealed partial class Main : Node2D
                 _simulation.Update(BattleSimulation.FixedStep);
                 _accumulator -= BattleSimulation.FixedStep;
             }
+            ObserveBattleStatus();
+            if (_simulation.Projectiles.Count > _previousProjectileCount && _weaponAudioCooldown <= 0)
+            {
+                _audio?.Play(TacticalCue.Weapon);
+                _weaponAudioCooldown = 0.09;
+            }
+            _previousProjectileCount = _simulation.Projectiles.Count;
         }
         else
         {
@@ -104,6 +124,16 @@ public sealed partial class Main : Node2D
             return;
         }
 
+        if (_showMissionSelect)
+        {
+            if (key.Keycode == Key.M || key.Keycode == Key.Escape)
+                _showMissionSelect = false;
+            else if (key.Keycode is Key.Key1 or Key.Key2 or Key.Key3)
+                LoadMission((int)key.Keycode - (int)Key.Key1);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         switch (key.Keycode)
         {
             case Key.H:
@@ -116,7 +146,13 @@ public sealed partial class Main : Node2D
                 CaptureVoiceCommand();
                 break;
             case Key.Q when !_showHelp:
+                var cooldownBefore = _simulation.SelectedShip.AbilityCooldown;
                 var abilityMessage = _simulation.TryActivateSelectedAbility();
+                if (cooldownBefore <= 0 && _simulation.SelectedShip.AbilityCooldown > 0)
+                {
+                    AdvanceTutorial(TutorialAction.ActivateAbility);
+                    _audio?.Play(TacticalCue.Ability);
+                }
                 SetStatus(abilityMessage);
                 AddLog(abilityMessage);
                 break;
@@ -126,20 +162,31 @@ public sealed partial class Main : Node2D
             case Key.R when !_showHelp:
                 Restart();
                 break;
+            case Key.M when !_showHelp:
+                _showMissionSelect = true;
+                break;
+            case Key.N when !_showHelp && _simulation.Status == BattleStatus.PlayerVictory:
+                LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
+                break;
             case Key.Tab when !_showHelp:
                 _simulation.CycleSelectedShip();
+                AdvanceTutorial(TutorialAction.SwitchShip);
                 break;
             case Key.Key1 when !_showHelp:
                 _simulation.SelectPlayerShip(0);
+                AdvanceTutorial(TutorialAction.SwitchShip);
                 break;
             case Key.Key2 when !_showHelp:
                 _simulation.SelectPlayerShip(1);
+                AdvanceTutorial(TutorialAction.SwitchShip);
                 break;
             case Key.Key3 when !_showHelp:
                 _simulation.SelectPlayerShip(2);
+                AdvanceTutorial(TutorialAction.SwitchShip);
                 break;
             case Key.Key4 when !_showHelp:
                 _simulation.SelectPlayerShip(3);
+                AdvanceTutorial(TutorialAction.SwitchShip);
                 break;
             case Key.Escape:
                 GetTree().Quit();
@@ -231,6 +278,8 @@ public sealed partial class Main : Node2D
             return;
         }
         var acknowledgement = _dispatcher.Dispatch(result.Command, _simulation);
+        _audio?.Play(TacticalCue.Acknowledgement);
+        AdvanceTutorial(TutorialAction.IssueOrder);
         SetStatus(acknowledgement);
         AddLog($"FLEET  {acknowledgement}");
     }
@@ -263,10 +312,67 @@ public sealed partial class Main : Node2D
     {
         _simulation.Reset();
         _log.Clear();
-        AddLog("New battle initialized.");
-        AddLog("Destroy the enemy flagship.");
+        AddLog($"Mission restarted: {_simulation.Mission.Title}.");
+        AddLog(_simulation.Mission.Objective.Title + ".");
         _paused = false;
+        _observedBattleStatus = BattleStatus.Active;
+        _previousProjectileCount = 0;
+        if (_simulation.Mission.Id == MissionId.FirstCommand) _tutorial = new();
         SetStatus("Fleet ready");
+    }
+
+    private void LoadMission(int missionIndex)
+    {
+        if (missionIndex < 0 || missionIndex >= MissionCatalog.All.Count)
+        {
+            SetStatus("Campaign complete");
+            return;
+        }
+        if (!_progress.IsUnlocked(missionIndex))
+        {
+            SetStatus("That mission is still locked");
+            return;
+        }
+
+        var mission = MissionCatalog.All[missionIndex];
+        _simulation.LoadMission(mission.Id);
+        _tutorial = new();
+        _observedBattleStatus = BattleStatus.Active;
+        _previousProjectileCount = 0;
+        _log.Clear();
+        AddLog($"Mission {missionIndex + 1}: {mission.Title}");
+        AddLog(mission.Objective.Title + ".");
+        _showMissionSelect = false;
+        _showHelp = true;
+        _paused = false;
+        SetStatus(mission.Subtitle);
+    }
+
+    private void ObserveBattleStatus()
+    {
+        if (_simulation.Status == _observedBattleStatus) return;
+        _observedBattleStatus = _simulation.Status;
+        if (_simulation.Status == BattleStatus.EnemyVictory)
+        {
+            _audio?.Play(TacticalCue.Alert);
+            return;
+        }
+        if (_simulation.Status != BattleStatus.PlayerVictory) return;
+
+        _progress = _progress.Complete(_simulation.Mission.Id);
+        _progressStore?.Save(_progress);
+        _audio?.Play(TacticalCue.Victory);
+        var current = MissionCatalog.IndexOf(_simulation.Mission.Id);
+        AddLog(current + 1 < MissionCatalog.All.Count
+            ? $"Mission complete. Mission {current + 2} unlocked."
+            : "Campaign demo complete.");
+    }
+
+    private void AdvanceTutorial(TutorialAction action)
+    {
+        if (_simulation.Mission.Id != MissionId.FirstCommand || !_tutorial.Notify(action)) return;
+        SetStatus(_tutorial.CurrentPrompt);
+        AddLog(_tutorial.CurrentPrompt);
     }
 
     private void DrawSpace()
@@ -372,10 +478,14 @@ public sealed partial class Main : Node2D
         DrawLine(new(0, 73), new(1600, 73), new(Cyan, 0.32f));
         DrawLabel("ANDROMEDA", new(26, 31), 24, Colors.White);
         DrawLabel("FLEET COMMAND", new(28, 54), 15, Cyan);
+        DrawLabel($"MISSION {MissionCatalog.IndexOf(_simulation.Mission.Id) + 1}  •  {_simulation.Mission.Title.ToUpperInvariant()}",
+            new(280, 44), 12, new Color("8bbdd2"), HorizontalAlignment.Center, 210);
 
-        DrawFactionBar(new(520, 18), 245, (float)(_simulation.FleetStrength(Team.Player) / 6.2),
+        DrawFactionBar(new(520, 18), 245, (float)(_simulation.FleetStrength(Team.Player) /
+            Math.Max(0.01, _simulation.InitialPlayerStrength)),
             "ANDROMEDA FLEET", Cyan);
-        DrawFactionBar(new(835, 18), 245, (float)(_simulation.FleetStrength(Team.Enemy) / 13.5),
+        DrawFactionBar(new(835, 18), 245, (float)(_simulation.FleetStrength(Team.Enemy) /
+            Math.Max(0.01, _simulation.InitialEnemyStrength)),
             "KETZAL EMPIRE", Red);
         var totalSeconds = (int)_simulation.ElapsedSeconds;
         DrawLabel($"{totalSeconds / 60:00}:{totalSeconds % 60:00}", new(800, 40), 18,
@@ -389,6 +499,12 @@ public sealed partial class Main : Node2D
         {
             DrawPanel(new(510, 87, 580, 38));
             DrawLabel(_status, new(800, 112), 14, new Color("a0e1f5"), HorizontalAlignment.Center, 560);
+        }
+        if (_simulation.Mission.Id == MissionId.FirstCommand && !_showHelp && !_tutorial.IsComplete)
+        {
+            DrawPanel(new(480, 132, 640, 42));
+            DrawLabel(_tutorial.CurrentPrompt, new(800, 159), 14, new Color("ffd065"),
+                HorizontalAlignment.Center, 610);
         }
     }
 
@@ -452,24 +568,33 @@ public sealed partial class Main : Node2D
 
     private void DrawObjective()
     {
-        DrawPanel(new(1300, 104, 278, 105));
+        DrawPanel(new(1270, 104, 308, 122));
         DrawLabel("PRIMARY OBJECTIVE", new(1316, 127), 13, Cyan);
-        DrawLabel("DESTROY ENEMY FLAGSHIP", new(1316, 154), 15, Colors.White);
-        var flagship = _simulation.FindShip("enemy-flagship")!;
-        DrawBar(new(1316, 172), 246, 8, (float)flagship.HullRatio, Red);
-        DrawLabel($"{(int)(flagship.HullRatio * 100)}% HULL", new(1316, 198), 11, new Color("91b9ce"));
+        DrawLabel(_simulation.Mission.Objective.Title.ToUpperInvariant(), new(1286, 154), 14, Colors.White,
+            HorizontalAlignment.Center, 276);
+        var progress = _simulation.ObjectiveProgress;
+        DrawBar(new(1286, 174), 276, 8, (float)progress.ClampedRatio, Red);
+        DrawLabel(progress.Label.ToUpperInvariant(), new(1286, 201), 11, new Color("91b9ce"),
+            HorizontalAlignment.Center, 276);
     }
 
     private void DrawOverlay()
     {
-        if (_showHelp)
+        if (_showMissionSelect)
+        {
+            DrawMissionSelect();
+        }
+        else if (_showHelp)
         {
             DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.75f));
-            DrawPanel(new(420, 175, 760, 480));
-            DrawLabel("YOU ARE THE COMMANDER", new(800, 238), 31, Colors.White,
+            DrawPanel(new(370, 120, 860, 650));
+            DrawLabel($"MISSION {MissionCatalog.IndexOf(_simulation.Mission.Id) + 1}  •  {_simulation.Mission.Title.ToUpperInvariant()}",
+                new(800, 178), 29, Colors.White,
                 HorizontalAlignment.Center, 700);
-            DrawLabel("Fly one ship. Command the whole fleet.", new(800, 270), 16,
+            DrawLabel(_simulation.Mission.Subtitle, new(800, 210), 16,
                 new Color("99d3e9"), HorizontalAlignment.Center, 700);
+            DrawLabel(_simulation.Mission.Briefing, new(800, 253), 14, new Color("dce7ee"),
+                HorizontalAlignment.Center, 750);
             var controls = new[]
             {
                 ("1–4 / TAB", "Switch controlled ship"),
@@ -478,18 +603,19 @@ public sealed partial class Main : Node2D
                 ("ENTER", "Type a natural-language fleet order"),
                 ("Q", "Use the selected ship’s tactical ability"),
                 ("V", "Local voice command adapter"),
-                ("P / H / R", "Pause, help, restart")
+                ("P / H / R", "Pause, help, restart"),
+                ("M", "Open mission selection")
             };
-            var y = 322;
+            var y = 330;
             foreach (var (key, description) in controls)
             {
-                DrawLabel(key, new(510, y), 15, Cyan);
-                DrawLabel(description, new(705, y), 16, new Color("dce7ee"));
-                y += 43;
+                DrawLabel(key, new(490, y), 14, Cyan);
+                DrawLabel(description, new(700, y), 15, new Color("dce7ee"));
+                y += 38;
             }
-            DrawLabel("Try: “Frigate Two, intercept the bombers.”", new(800, 618), 14,
+            DrawLabel($"Try: “{_simulation.Mission.RecommendedOrder}”", new(800, 683), 14,
                 new Color("ffd065"), HorizontalAlignment.Center, 700);
-            DrawLabel("Press H to enter the battle", new(800, 644), 13,
+            DrawLabel("Press H to enter the battle", new(800, 724), 13,
                 new Color("87b5ca"), HorizontalAlignment.Center, 700);
         }
         else if (_paused && _simulation.Status == BattleStatus.Active)
@@ -498,12 +624,44 @@ public sealed partial class Main : Node2D
         }
         else if (_simulation.Status == BattleStatus.PlayerVictory)
         {
-            DrawBanner("VICTORY", "Enemy flagship destroyed • Press R to replay", new Color("48eba9"));
+            var index = MissionCatalog.IndexOf(_simulation.Mission.Id);
+            var next = index + 1 < MissionCatalog.All.Count
+                ? "Press N for the next mission • R to replay • M for mission select"
+                : "Campaign demo complete • R to replay • M for mission select";
+            DrawBanner("VICTORY", next, new Color("48eba9"));
         }
         else if (_simulation.Status == BattleStatus.EnemyVictory)
         {
-            DrawBanner("FLEET LOST", "The flagship was destroyed • Press R to try again", Red);
+            DrawBanner("MISSION FAILED", "A protected ship was lost • Press R to try again", Red);
         }
+    }
+
+    private void DrawMissionSelect()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.82f));
+        DrawPanel(new(390, 130, 820, 620));
+        DrawLabel("CAMPAIGN MISSIONS", new(800, 198), 34, Colors.White,
+            HorizontalAlignment.Center, 700);
+        DrawLabel("Three escalating fleet-command engagements", new(800, 230), 15,
+            new Color("99d3e9"), HorizontalAlignment.Center, 700);
+
+        for (var index = 0; index < MissionCatalog.All.Count; index++)
+        {
+            var mission = MissionCatalog.All[index];
+            var unlocked = _progress.IsUnlocked(index);
+            var completed = _progress.IsCompleted(mission.Id);
+            var y = 290 + index * 120;
+            DrawPanel(new(455, y - 35, 690, 92));
+            DrawLabel($"{index + 1}", new(485, y + 10), 28, unlocked ? Cyan : new Color("566a73"));
+            DrawLabel(mission.Title.ToUpperInvariant(), new(545, y - 1), 19,
+                unlocked ? Colors.White : new Color("687983"));
+            DrawLabel(unlocked ? mission.Subtitle : "LOCKED — complete the previous mission",
+                new(545, y + 25), 13, unlocked ? new Color("9bc9dc") : new Color("66727a"));
+            if (completed) DrawLabel("COMPLETE", new(1010, y + 12), 13, new Color("48eba9"));
+        }
+
+        DrawLabel("Press 1–3 to deploy • M or Esc to close", new(800, 690), 14,
+            new Color("ffd065"), HorizontalAlignment.Center, 700);
     }
 
     private void DrawBanner(string title, string subtitle, Color color)
