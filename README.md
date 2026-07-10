@@ -15,6 +15,7 @@ Ollama model and whisper.cpp.
 ## Current playable campaign demo
 
 - Three sequential missions with distinct objectives and escalating fleet complexity
+- Six coherent scalable vector ship classes with faction tinting, shields, and engine trails
 - Mission briefings, first-command onboarding, unlocks, and persistent campaign progress
 - Four switchable allied ships with different handling and tactical abilities
 - Manual thrust, steering, and weapons
@@ -28,6 +29,7 @@ Ollama model and whisper.cpp.
 - Deterministic input replays with final-state checksum verification
 - Built-in three-mission simulation benchmark and structured GitHub feedback forms
 - Procedural acknowledgements, weapon, ability, alert, and victory audio cues
+- Continuous low-frequency engine-room ambience
 - Deterministic fixed-step simulation suitable for replays and multiplayer
 - Automated parser, combat, mission, persistence, determinism, command, and endurance tests
 

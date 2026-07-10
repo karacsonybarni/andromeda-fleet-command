@@ -8,6 +8,7 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Local deterministic fleet simulation with no hosted runtime dependency
 - Instant control switching between allied ships
 - Manual flight, weapons, and four role-specific tactical abilities
+- Six original scalable vector ship classes with faction tinting and engine/shield effects
 - Typed natural-language orders with a safe offline parser
 - Optional local Ollama interpretation and whisper.cpp push-to-talk adapters
 - In-game readiness diagnostics, Ollama model pull, whisper-cli discovery, and speech-model download
@@ -20,10 +21,10 @@ and long-term Steam goals from being mixed together in campaign copy.
 
 ## Required before the Indiegogo demo is called complete
 
-- Coherent production art replacing procedural ship silhouettes
+- Final art-direction, animation, VFX, and capture polish on the coherent vector fleet set
 - Bundled whisper.cpp executables and measured voice/model latency requirements
 - Mission-duration balancing from external playtests
-- Professional audio, engine ambience, and final mix
+- Professional audio mix and voice performances
 - Signed Windows and Linux demo packages
 - Steam Deck and mid-range Windows performance evidence
 - Captured gameplay trailer

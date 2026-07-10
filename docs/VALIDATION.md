@@ -50,6 +50,8 @@ in a normal Godot .NET installation.
 - 120-frame real-engine headless run: passed
 - Object/resource leak check: passed
 - Automated in-engine smoke battle: passed
+- Six SVG ship assets imported and loaded through Godot's resource pipeline: passed
+- Headless resource leak check after presentation load: passed
 
 Expected smoke marker:
 
