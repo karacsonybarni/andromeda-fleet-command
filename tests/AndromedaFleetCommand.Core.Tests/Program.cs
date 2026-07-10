@@ -2,6 +2,7 @@ using AndromedaFleetCommand.Core.Commands;
 using AndromedaFleetCommand.Core.Configuration;
 using AndromedaFleetCommand.Core.Model;
 using AndromedaFleetCommand.Core.Missions;
+using AndromedaFleetCommand.Core.Replay;
 using AndromedaFleetCommand.Core.Simulation;
 
 var tests = new (string Name, Action Body)[]
@@ -25,7 +26,10 @@ var tests = new (string Name, Action Body)[]
     ("Local AI configuration enforces local endpoints", LocalAiConfigurationEnforcesLocalEndpoints),
     ("Local AI configuration persists safely", LocalAiConfigurationPersistsSafely),
     ("Game settings normalize accessibility values", GameSettingsNormalizeValues),
-    ("Game settings persist and recover safely", GameSettingsPersistSafely)
+    ("Game settings persist and recover safely", GameSettingsPersistSafely),
+    ("Recorded battles replay to the same checksum", RecordedBattlesReplayDeterministically),
+    ("Replay files persist and recover safely", ReplayFilesPersistSafely),
+    ("Simulation checksum detects state changes", SimulationChecksumDetectsChanges)
 };
 
 var failures = 0;
@@ -345,6 +349,73 @@ static void GameSettingsPersistSafely()
     {
         if (Directory.Exists(directory)) Directory.Delete(directory, true);
     }
+}
+
+static void RecordedBattlesReplayDeterministically()
+{
+    var simulation = new BattleSimulation(MissionId.BlackSun, 77);
+    var recorder = new ReplayRecorder(MissionId.BlackSun, 77);
+    var dispatcher = new CommandDispatcher();
+    var command = new FleetCommand("all", OrderType.Attack, "enemy flagship");
+    recorder.RecordCommand(0, command);
+    dispatcher.Dispatch(command, simulation);
+    var finalTick = 0;
+    for (var tick = 0; tick < 900 && simulation.Status == BattleStatus.Active; tick++)
+    {
+        var input = tick < 40 ? new ManualInput(true, false, false, false, tick % 8 == 0) : ManualInput.None;
+        recorder.RecordInput(tick, input);
+        if (tick == 60)
+        {
+            recorder.RecordShipSelection(tick, 1);
+            simulation.SelectPlayerShip(1);
+        }
+        if (tick == 61)
+        {
+            recorder.RecordAbility(tick);
+            simulation.TryActivateSelectedAbility();
+        }
+        simulation.SetManualInput(input);
+        simulation.Update(BattleSimulation.FixedStep);
+        finalTick++;
+    }
+    var replay = recorder.Complete(finalTick, simulation);
+    True(ReplayRunner.Validate(replay), "Replay checksum matches recorded battle");
+}
+
+static void ReplayFilesPersistSafely()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"afc-replay-tests-{Guid.NewGuid():N}");
+    try
+    {
+        var simulation = new BattleSimulation(MissionId.FirstCommand, 91);
+        simulation.Update(BattleSimulation.FixedStep);
+        var replay = new ReplayRecorder(MissionId.FirstCommand, 91).Complete(1, simulation);
+        var store = new BattleReplayStore(directory);
+        store.Save(replay);
+        var loaded = store.LoadLatest();
+        True(loaded is not null, "Replay loads");
+        Equal(replay.MissionId, loaded!.MissionId, "Replay mission round-trips");
+        Equal(replay.Seed, loaded.Seed, "Replay seed round-trips");
+        Equal(replay.FinalTick, loaded.FinalTick, "Replay tick count round-trips");
+        Equal(replay.ExpectedChecksum, loaded.ExpectedChecksum, "Replay checksum round-trips");
+        True(replay.Events.SequenceEqual(loaded.Events), "Replay events round-trip");
+        File.WriteAllText(Directory.GetFiles(directory).Single(), "broken");
+        True(store.LoadLatest() is null, "Corrupt replay is rejected safely");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static void SimulationChecksumDetectsChanges()
+{
+    var simulation = new BattleSimulation(MissionId.FirstCommand);
+    var before = SimulationChecksum.Compute(simulation);
+    simulation.SetManualInput(new(true, false, false, false, false));
+    simulation.Update(BattleSimulation.FixedStep);
+    var after = SimulationChecksum.Compute(simulation);
+    True(!before.Equals(after, StringComparison.Ordinal), "Checksum changes with simulation state");
 }
 
 static void True(bool condition, string message)

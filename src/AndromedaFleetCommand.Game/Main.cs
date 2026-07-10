@@ -2,6 +2,7 @@ using AndromedaFleetCommand.Core.Commands;
 using AndromedaFleetCommand.Core.Configuration;
 using AndromedaFleetCommand.Core.Model;
 using AndromedaFleetCommand.Core.Missions;
+using AndromedaFleetCommand.Core.Replay;
 using AndromedaFleetCommand.Core.Simulation;
 using AndromedaFleetCommand.Game.Infrastructure;
 using Godot;
@@ -65,12 +66,16 @@ public sealed partial class Main : Node2D
     private bool _showSettings;
     private string _audioCaption = string.Empty;
     private double _audioCaptionTime;
+    private BattleReplayStore? _replayStore;
+    private ReplayRecorder? _replayRecorder;
+    private int _simulationTick;
 
     public override void _Ready()
     {
         _settingsStore = new(ProjectSettings.GlobalizePath("user://settings.json"));
         _settings = _settingsStore.Load();
         _crashReports = new(ProjectSettings.GlobalizePath("user://crashes"));
+        _replayStore = new(ProjectSettings.GlobalizePath("user://replays"));
         ApplySettings();
         _localAiStore = new(ProjectSettings.GlobalizePath("user://local-ai.json"));
         _localAiConfiguration = LocalAiConfiguration.ApplyEnvironment(_localAiStore.Load());
@@ -84,6 +89,12 @@ public sealed partial class Main : Node2D
         AddLog($"Mission 1: {_simulation.Mission.Title}. Press H when ready.");
         AddLog("Enter opens the fleet command channel.");
         _smokeTest = OS.GetCmdlineUserArgs().Contains("--smoke-test", StringComparer.Ordinal);
+        StartReplayRecording();
+        if (OS.GetCmdlineUserArgs().Contains("--benchmark", StringComparer.Ordinal))
+        {
+            RunBenchmark(true);
+            return;
+        }
         if (_smokeTest)
         {
             _showHelp = false;
@@ -118,16 +129,19 @@ public sealed partial class Main : Node2D
             var joyX = Input.GetJoyAxis(0, JoyAxis.LeftX);
             var joyY = Input.GetJoyAxis(0, JoyAxis.LeftY);
             var deadzone = (float)_settings.GamepadDeadzone;
-            _simulation.SetManualInput(new(
+            var manualInput = new ManualInput(
                 Input.IsKeyPressed(Key.W) || joyY < -deadzone,
                 Input.IsKeyPressed(Key.S) || joyY > deadzone,
                 Input.IsKeyPressed(Key.A) || joyX < -deadzone,
                 Input.IsKeyPressed(Key.D) || joyX > deadzone,
-                Input.IsKeyPressed(Key.Space) || Input.IsJoyButtonPressed(0, JoyButton.A)));
+                Input.IsKeyPressed(Key.Space) || Input.IsJoyButtonPressed(0, JoyButton.A));
+            _replayRecorder?.RecordInput(_simulationTick, manualInput);
+            _simulation.SetManualInput(manualInput);
             var safety = 0;
             while (_accumulator >= BattleSimulation.FixedStep && safety++ < 12)
             {
                 _simulation.Update(BattleSimulation.FixedStep);
+                _simulationTick++;
                 _accumulator -= BattleSimulation.FixedStep;
             }
             ObserveBattleStatus();
@@ -242,24 +256,29 @@ public sealed partial class Main : Node2D
                 LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
                 break;
             case Key.Tab when !_showHelp:
-                _simulation.CycleSelectedShip();
-                AdvanceTutorial(TutorialAction.SwitchShip);
+                CyclePlayerShip();
                 break;
             case Key.Key1 when !_showHelp:
-                _simulation.SelectPlayerShip(0);
-                AdvanceTutorial(TutorialAction.SwitchShip);
+                SelectPlayerShip(0);
                 break;
             case Key.Key2 when !_showHelp:
-                _simulation.SelectPlayerShip(1);
-                AdvanceTutorial(TutorialAction.SwitchShip);
+                SelectPlayerShip(1);
                 break;
             case Key.Key3 when !_showHelp:
-                _simulation.SelectPlayerShip(2);
-                AdvanceTutorial(TutorialAction.SwitchShip);
+                SelectPlayerShip(2);
                 break;
             case Key.Key4 when !_showHelp:
-                _simulation.SelectPlayerShip(3);
-                AdvanceTutorial(TutorialAction.SwitchShip);
+                SelectPlayerShip(3);
+                break;
+            case Key.F7:
+                RunBenchmark(false);
+                break;
+            case Key.F8:
+                OS.ShellOpen("https://github.com/karacsonybarni/andromeda-fleet-command/issues/new/choose");
+                SetStatus("Opened the feedback form");
+                break;
+            case Key.F9:
+                ValidateLatestReplay();
                 break;
             case Key.Escape:
                 GetTree().Quit();
@@ -351,6 +370,7 @@ public sealed partial class Main : Node2D
             AddLog(result.Message);
             return;
         }
+        _replayRecorder?.RecordCommand(_simulationTick, result.Command);
         var acknowledgement = _dispatcher.Dispatch(result.Command, _simulation);
         PlayCue(TacticalCue.Acknowledgement, "Fleet acknowledges order");
         AdvanceTutorial(TutorialAction.IssueOrder);
@@ -384,6 +404,7 @@ public sealed partial class Main : Node2D
 
     private void ActivateSelectedAbility()
     {
+        _replayRecorder?.RecordAbility(_simulationTick);
         var cooldownBefore = _simulation.SelectedShip.AbilityCooldown;
         var abilityMessage = _simulation.TryActivateSelectedAbility();
         if (cooldownBefore <= 0 && _simulation.SelectedShip.AbilityCooldown > 0)
@@ -393,6 +414,20 @@ public sealed partial class Main : Node2D
         }
         SetStatus(abilityMessage);
         AddLog(abilityMessage);
+    }
+
+    private void SelectPlayerShip(int index)
+    {
+        _replayRecorder?.RecordShipSelection(_simulationTick, index);
+        _simulation.SelectPlayerShip(index);
+        AdvanceTutorial(TutorialAction.SwitchShip);
+    }
+
+    private void CyclePlayerShip()
+    {
+        _replayRecorder?.RecordShipCycle(_simulationTick);
+        _simulation.CycleSelectedShip();
+        AdvanceTutorial(TutorialAction.SwitchShip);
     }
 
     private void HandleGamepadButton(JoyButton button)
@@ -427,8 +462,7 @@ public sealed partial class Main : Node2D
         {
             case JoyButton.LeftShoulder:
             case JoyButton.RightShoulder:
-                _simulation.CycleSelectedShip();
-                AdvanceTutorial(TutorialAction.SwitchShip);
+                CyclePlayerShip();
                 break;
             case JoyButton.B:
                 ActivateSelectedAbility();
@@ -504,6 +538,68 @@ public sealed partial class Main : Node2D
         if (!_settings.Subtitles) return;
         _audioCaption = caption;
         _audioCaptionTime = 2.2;
+    }
+
+    private void StartReplayRecording()
+    {
+        _simulationTick = 0;
+        _replayRecorder = new(_simulation.Mission.Id, _simulation.Seed);
+    }
+
+    private void SaveCompletedReplay()
+    {
+        if (_replayRecorder is null || _replayStore is null) return;
+        var replay = _replayRecorder.Complete(_simulationTick, _simulation);
+        var path = _replayStore.Save(replay);
+        var valid = ReplayRunner.Validate(replay);
+        AddLog(valid ? "Replay verified and saved." : "Replay desynchronization detected.");
+        if (!valid) _crashReports?.WriteReport(new InvalidOperationException(
+            "Recorded replay did not reproduce its final checksum"), $"Replay validation: {path}");
+    }
+
+    private void ValidateLatestReplay()
+    {
+        var replay = _replayStore?.LoadLatest();
+        if (replay is null)
+        {
+            SetStatus("No saved replay is available yet");
+            return;
+        }
+        var valid = ReplayRunner.Validate(replay);
+        SetStatus(valid ? "Latest replay verified exactly" : "Replay desynchronization detected");
+        AddLog(valid ? "REPLAY  deterministic checksum passed" : "REPLAY  checksum failed");
+    }
+
+    private void RunBenchmark(bool quitWhenComplete)
+    {
+        const int ticksPerMission = 60 * 180;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var ticks = 0;
+        foreach (var mission in MissionCatalog.All)
+        {
+            var simulation = new BattleSimulation(mission.Id);
+            var command = _rules.Parse("All ships, attack the nearest enemy").Command!;
+            _dispatcher.Dispatch(command, simulation);
+            for (var index = 0; index < ticksPerMission; index++)
+            {
+                if (simulation.Status != BattleStatus.Active)
+                {
+                    simulation.Reset();
+                    _dispatcher.Dispatch(command, simulation);
+                }
+                simulation.Update(BattleSimulation.FixedStep);
+                ticks++;
+            }
+        }
+        stopwatch.Stop();
+        var ticksPerSecond = ticks / Math.Max(0.001, stopwatch.Elapsed.TotalSeconds);
+        var report = $"UTC={DateTime.UtcNow:O}\nTicks={ticks}\nSeconds={stopwatch.Elapsed.TotalSeconds:F4}\nTicksPerSecond={ticksPerSecond:F0}\n";
+        var directory = ProjectSettings.GlobalizePath("user://benchmarks");
+        Directory.CreateDirectory(directory);
+        File.WriteAllText(Path.Combine(directory, $"benchmark-{DateTime.UtcNow:yyyyMMdd-HHmmss}.txt"), report);
+        GD.Print($"AFC_BENCHMARK_PASS ticks={ticks} ticks_per_second={ticksPerSecond:F0}");
+        SetStatus($"Benchmark: {ticksPerSecond:F0} simulation ticks/s");
+        if (quitWhenComplete) GetTree().Quit();
     }
 
     private void RebuildLocalAiAdapters()
@@ -617,6 +713,7 @@ public sealed partial class Main : Node2D
         _paused = false;
         _observedBattleStatus = BattleStatus.Active;
         _previousProjectileCount = 0;
+        StartReplayRecording();
         if (_simulation.Mission.Id == MissionId.FirstCommand) _tutorial = new();
         SetStatus("Fleet ready");
     }
@@ -639,6 +736,7 @@ public sealed partial class Main : Node2D
         _tutorial = new();
         _observedBattleStatus = BattleStatus.Active;
         _previousProjectileCount = 0;
+        StartReplayRecording();
         _log.Clear();
         AddLog($"Mission {missionIndex + 1}: {mission.Title}");
         AddLog(mission.Objective.Title + ".");
@@ -652,6 +750,7 @@ public sealed partial class Main : Node2D
     {
         if (_simulation.Status == _observedBattleStatus) return;
         _observedBattleStatus = _simulation.Status;
+        SaveCompletedReplay();
         if (_simulation.Status == BattleStatus.EnemyVictory)
         {
             PlayCue(TacticalCue.Alert, "Warning: protected ship lost");

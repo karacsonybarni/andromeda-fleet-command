@@ -15,6 +15,7 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Mission-specific objectives, protected-ship failure conditions, unlocks, and local saves
 - Guided first mission and procedural tactical audio cues
 - Persistent accessibility settings, gamepad controls, captions, reduced flashes, and crash reports
+- Deterministic replay validation, a headless benchmark, and structured player-feedback forms
 - Automated core tests and an actual Godot launch smoke test
 
 ## Required before the Indiegogo demo is called complete
@@ -25,12 +26,12 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Professional audio, engine ambience, and final mix
 - Signed Windows and Linux demo packages
 - Steam Deck and mid-range Windows performance evidence
-- Captured gameplay trailer and player feedback flow
+- Captured gameplay trailer
 
 ## Steam-alpha or stretch work, not a current demo promise
 
 - Steamworks achievements, lobbies, invitations, cloud saves, and Workshop
-- Server-authoritative multiplayer and deterministic replay verification
+- Server-authoritative multiplayer transport, lobbies, and desync recovery
 - Full action rebinding plus ultrawide and localized-subtitle validation
 - Steam Deck verification and public playtest infrastructure
 

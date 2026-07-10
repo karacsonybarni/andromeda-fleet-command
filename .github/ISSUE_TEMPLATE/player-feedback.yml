@@ -1,0 +1,35 @@
+name: Player feedback
+description: Share campaign, controls, balance, accessibility, or voice-command feedback.
+title: "[Feedback] "
+labels: [feedback]
+body:
+  - type: dropdown
+    id: mission
+    attributes:
+      label: Mission
+      options: [First Command, Broken Shield, Black Sun, Menus or setup, Whole demo]
+    validations:
+      required: true
+  - type: textarea
+    id: satisfying
+    attributes:
+      label: What felt satisfying?
+    validations:
+      required: true
+  - type: textarea
+    id: confusing
+    attributes:
+      label: What felt confusing, slow, or frustrating?
+    validations:
+      required: true
+  - type: input
+    id: first-order
+    attributes:
+      label: Time until your first successful command
+      placeholder: e.g. 70 seconds
+  - type: textarea
+    id: improvement
+    attributes:
+      label: If you could change one thing, what would it be?
+    validations:
+      required: true
