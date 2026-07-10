@@ -54,6 +54,7 @@ public sealed partial class Main : Node2D
     private BattleStatus _observedBattleStatus = BattleStatus.Active;
     private int _previousProjectileCount;
     private double _weaponAudioCooldown;
+    private readonly HashSet<CombatEvent> _heardCombatEvents = [];
     private LocalAiConfigurationStore? _localAiStore;
     private LocalAiConfiguration _localAiConfiguration = LocalAiConfiguration.Default;
     private LocalAiSetupService? _localAiSetup;
@@ -161,6 +162,7 @@ public sealed partial class Main : Node2D
                 _simulationTick++;
                 _accumulator -= BattleSimulation.FixedStep;
             }
+            ObserveCombatAudio();
             ObserveBattleStatus();
             if (_simulation.Projectiles.Count > _previousProjectileCount && _weaponAudioCooldown <= 0)
             {
@@ -562,6 +564,24 @@ public sealed partial class Main : Node2D
         _audioCaptionTime = 2.2;
     }
 
+    private void ObserveCombatAudio()
+    {
+        _heardCombatEvents.RemoveWhere(item => !_simulation.Events.Contains(item));
+        foreach (var combatEvent in _simulation.Events)
+        {
+            if (!_heardCombatEvents.Add(combatEvent)) continue;
+            switch (combatEvent.Type)
+            {
+                case CombatEventType.Impact:
+                    _audio?.Play(TacticalCue.Impact);
+                    break;
+                case CombatEventType.Destroyed:
+                    PlayCue(TacticalCue.Destruction, combatEvent.Message ?? "Ship destroyed");
+                    break;
+            }
+        }
+    }
+
     private void StartReplayRecording()
     {
         _simulationTick = 0;
@@ -750,6 +770,7 @@ public sealed partial class Main : Node2D
         _paused = false;
         _observedBattleStatus = BattleStatus.Active;
         _previousProjectileCount = 0;
+        _heardCombatEvents.Clear();
         StartReplayRecording();
         if (_simulation.Mission.Id == MissionId.FirstCommand) _tutorial = new();
         _tutorialCelebrationTime = 0;
@@ -777,6 +798,7 @@ public sealed partial class Main : Node2D
         _tutorialStepFlash = 0;
         _observedBattleStatus = BattleStatus.Active;
         _previousProjectileCount = 0;
+        _heardCombatEvents.Clear();
         StartReplayRecording();
         _log.Clear();
         AddLog($"Mission {missionIndex + 1}: {mission.Title}");
@@ -794,7 +816,7 @@ public sealed partial class Main : Node2D
         SaveCompletedReplay();
         if (_simulation.Status == BattleStatus.EnemyVictory)
         {
-            PlayCue(TacticalCue.Alert, "Warning: protected ship lost");
+            PlayCue(TacticalCue.Defeat, "Mission failed: protected ship lost");
             return;
         }
         if (_simulation.Status != BattleStatus.PlayerVictory) return;

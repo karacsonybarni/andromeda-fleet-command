@@ -20,7 +20,8 @@
 - [ ] Tune each mission to 8–12 minutes using external playtest data
 - [x] Procedural acknowledgements, weapons, abilities, tactical alerts, and victory cues
 - [x] Continuous procedural engine-room ambience
-- [ ] Professional sound-design and mix pass plus voice performances
+- [x] Layered procedural stereo combat feedback and mix pass
+- [ ] Optional professional voice performances
 - [x] Four-beat Captain's Drill for switching, manual flight, fleet orders, and abilities
 - [ ] Validate a first satisfying spoken order within two minutes on supported hardware
 - [x] In-game local-AI readiness diagnostics, Ollama pull, and speech-model download
