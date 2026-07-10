@@ -16,7 +16,8 @@ Ollama model and whisper.cpp.
 
 - Three sequential missions with distinct objectives and escalating fleet complexity
 - Six coherent scalable vector ship classes with faction tinting, shields, and engine trails
-- Mission briefings, first-command onboarding, unlocks, and persistent campaign progress
+- A four-beat, controller-aware Captain's Drill that teaches the game by doing
+- Mission briefings, unlocks, and persistent campaign progress
 - Four switchable allied ships with different handling and tactical abilities
 - Manual thrust, steering, and weapons
 - Natural-language typed fleet commands
@@ -108,12 +109,15 @@ Flagship, move north
 ## Optional local AI
 
 The offline parser always works. Press L in-game to scan local services, pull
-the recommended Ollama model, and download the whisper.cpp speech model.
+the recommended Ollama model, choose GPU-preferred or CPU-only inference, and
+download the whisper.cpp speech model. GPU acceleration is preferred by default:
+the game asks Ollama to offload the full model when supported, with automatic
+CPU fallback when GPU support or VRAM is insufficient.
 
 Environment variables remain available for scripted setups:
 
 ~~~bash
-AFC_OLLAMA=true AFC_OLLAMA_MODEL=qwen3:4b ./scripts/run.sh
+AFC_OLLAMA=true AFC_OLLAMA_GPU=true AFC_OLLAMA_MODEL=qwen3:4b ./scripts/run.sh
 ~~~
 
 To enable voice commands, install whisper-cli, download a whisper.cpp model,
