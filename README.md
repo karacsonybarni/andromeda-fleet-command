@@ -22,6 +22,9 @@ Ollama model and whisper.cpp.
 - Optional local Ollama interpretation with safe offline fallback
 - Optional local whisper.cpp push-to-talk
 - In-game local-AI readiness panel and model setup (L)
+- Persistent volume, color-vision, reduced-flash, caption, and controller settings
+- Gamepad flight, weapons, abilities, ship switching, pause, and menu controls
+- Automatic local crash reports under the Godot user-data directory
 - Procedural acknowledgements, weapon, ability, alert, and victory audio cues
 - Deterministic fixed-step simulation suitable for replays and multiplayer
 - Automated parser, combat, mission, persistence, determinism, command, and endurance tests
@@ -70,6 +73,7 @@ powershell -ExecutionPolicy Bypass -File scripts/run.ps1
 - M: mission selection
 - N: next mission after victory
 - L: local AI and voice setup
+- F10: settings and accessibility
 - Esc: cancel or quit
 
 Try:

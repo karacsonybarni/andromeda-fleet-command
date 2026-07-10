@@ -10,11 +10,24 @@ namespace AndromedaFleetCommand.Game;
 
 public sealed partial class Main : Node2D
 {
-    private static readonly Color Cyan = new("22d8ff");
-    private static readonly Color Blue = new("2c8bff");
-    private static readonly Color Red = new("ff4b46");
-    private static readonly Color Orange = new("ff9b42");
-    private static readonly Color Panel = new(0.015f, 0.06f, 0.11f, 0.9f);
+    private Color Cyan => _settings.ColorMode switch
+    {
+        ColorVisionMode.Deuteranopia => new("3295ff"),
+        ColorVisionMode.Tritanopia => new("46e39a"),
+        ColorVisionMode.HighContrast => Colors.White,
+        _ => new("22d8ff")
+    };
+    private Color Red => _settings.ColorMode switch
+    {
+        ColorVisionMode.Deuteranopia => new("ffd447"),
+        ColorVisionMode.Tritanopia => new("ff62bc"),
+        ColorVisionMode.HighContrast => new("ffb000"),
+        _ => new("ff4b46")
+    };
+    private Color Orange => _settings.ColorMode == ColorVisionMode.Tritanopia
+        ? new("ff8fd1")
+        : new("ff9b42");
+    private static Color Panel => new(0.015f, 0.06f, 0.11f, 0.92f);
 
     private readonly BattleSimulation _simulation = new(MissionId.FirstCommand);
     private readonly RuleBasedCommandInterpreter _rules = new();
@@ -46,9 +59,19 @@ public sealed partial class Main : Node2D
         "Press R to scan local AI services");
     private bool _showLocalAiSetup;
     private bool _localAiBusy;
+    private GameSettingsStore? _settingsStore;
+    private GameSettings _settings = GameSettings.Default;
+    private CrashReportService? _crashReports;
+    private bool _showSettings;
+    private string _audioCaption = string.Empty;
+    private double _audioCaptionTime;
 
     public override void _Ready()
     {
+        _settingsStore = new(ProjectSettings.GlobalizePath("user://settings.json"));
+        _settings = _settingsStore.Load();
+        _crashReports = new(ProjectSettings.GlobalizePath("user://crashes"));
+        ApplySettings();
         _localAiStore = new(ProjectSettings.GlobalizePath("user://local-ai.json"));
         _localAiConfiguration = LocalAiConfiguration.ApplyEnvironment(_localAiStore.Load());
         _localAiSetup = new();
@@ -76,11 +99,13 @@ public sealed partial class Main : Node2D
         _voiceInput?.Dispose();
         _interpreter?.Dispose();
         _localAiSetup?.Dispose();
+        _crashReports?.Dispose();
     }
 
     public override void _Process(double delta)
     {
         _weaponAudioCooldown = Math.Max(0, _weaponAudioCooldown - delta);
+        _audioCaptionTime = Math.Max(0, _audioCaptionTime - delta);
         if (_statusTime > 0)
         {
             _statusTime -= delta;
@@ -90,12 +115,15 @@ public sealed partial class Main : Node2D
         if (!_paused && !_showHelp && !_commandMode && _simulation.Status == BattleStatus.Active)
         {
             _accumulator += Math.Min(delta, 0.2);
+            var joyX = Input.GetJoyAxis(0, JoyAxis.LeftX);
+            var joyY = Input.GetJoyAxis(0, JoyAxis.LeftY);
+            var deadzone = (float)_settings.GamepadDeadzone;
             _simulation.SetManualInput(new(
-                Input.IsKeyPressed(Key.W),
-                Input.IsKeyPressed(Key.S),
-                Input.IsKeyPressed(Key.A),
-                Input.IsKeyPressed(Key.D),
-                Input.IsKeyPressed(Key.Space)));
+                Input.IsKeyPressed(Key.W) || joyY < -deadzone,
+                Input.IsKeyPressed(Key.S) || joyY > deadzone,
+                Input.IsKeyPressed(Key.A) || joyX < -deadzone,
+                Input.IsKeyPressed(Key.D) || joyX > deadzone,
+                Input.IsKeyPressed(Key.Space) || Input.IsJoyButtonPressed(0, JoyButton.A)));
             var safety = 0;
             while (_accumulator >= BattleSimulation.FixedStep && safety++ < 12)
             {
@@ -105,7 +133,7 @@ public sealed partial class Main : Node2D
             ObserveBattleStatus();
             if (_simulation.Projectiles.Count > _previousProjectileCount && _weaponAudioCooldown <= 0)
             {
-                _audio?.Play(TacticalCue.Weapon);
+                PlayCue(TacticalCue.Weapon, "Weapons fire");
                 _weaponAudioCooldown = 0.09;
             }
             _previousProjectileCount = _simulation.Projectiles.Count;
@@ -128,6 +156,12 @@ public sealed partial class Main : Node2D
 
     public override void _UnhandledInput(InputEvent inputEvent)
     {
+        if (inputEvent is InputEventJoypadButton { Pressed: true } joypad)
+        {
+            HandleGamepadButton(joypad.ButtonIndex);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (inputEvent is not InputEventKey { Pressed: true, Echo: false } key) return;
         if (_commandMode)
         {
@@ -157,6 +191,13 @@ public sealed partial class Main : Node2D
             return;
         }
 
+        if (_showSettings)
+        {
+            HandleSettingsInput(key.Keycode);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (_showMissionSelect)
         {
             if (key.Keycode == Key.M || key.Keycode == Key.Escape)
@@ -179,15 +220,7 @@ public sealed partial class Main : Node2D
                 CaptureVoiceCommand();
                 break;
             case Key.Q when !_showHelp:
-                var cooldownBefore = _simulation.SelectedShip.AbilityCooldown;
-                var abilityMessage = _simulation.TryActivateSelectedAbility();
-                if (cooldownBefore <= 0 && _simulation.SelectedShip.AbilityCooldown > 0)
-                {
-                    AdvanceTutorial(TutorialAction.ActivateAbility);
-                    _audio?.Play(TacticalCue.Ability);
-                }
-                SetStatus(abilityMessage);
-                AddLog(abilityMessage);
+                ActivateSelectedAbility();
                 break;
             case Key.P when !_showHelp:
                 _paused = !_paused;
@@ -201,6 +234,9 @@ public sealed partial class Main : Node2D
             case Key.L:
                 _showLocalAiSetup = true;
                 RefreshLocalAiStatus();
+                break;
+            case Key.F10:
+                _showSettings = true;
                 break;
             case Key.N when !_showHelp && _simulation.Status == BattleStatus.PlayerVictory:
                 LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
@@ -238,7 +274,8 @@ public sealed partial class Main : Node2D
         DrawGrid();
         foreach (var projectile in _simulation.Projectiles) DrawProjectile(projectile);
         foreach (var ship in _simulation.Ships.Where(ship => ship.IsAlive)) DrawShip(ship);
-        foreach (var combatEvent in _simulation.Events.Where(item => item.Type != CombatEventType.Order))
+        foreach (var combatEvent in _simulation.Events.Where(item => item.Type != CombatEventType.Order &&
+                     (!_settings.ReduceFlashes || item.Type != CombatEventType.MuzzleFlash)))
             DrawCombatEvent(combatEvent);
         DrawHud();
         DrawOverlay();
@@ -315,7 +352,7 @@ public sealed partial class Main : Node2D
             return;
         }
         var acknowledgement = _dispatcher.Dispatch(result.Command, _simulation);
-        _audio?.Play(TacticalCue.Acknowledgement);
+        PlayCue(TacticalCue.Acknowledgement, "Fleet acknowledges order");
         AdvanceTutorial(TutorialAction.IssueOrder);
         SetStatus(acknowledgement);
         AddLog($"FLEET  {acknowledgement}");
@@ -343,6 +380,130 @@ public sealed partial class Main : Node2D
             SetStatus($"Voice failed: {error.Message}");
             AddLog($"VOICE  {error.Message}");
         }
+    }
+
+    private void ActivateSelectedAbility()
+    {
+        var cooldownBefore = _simulation.SelectedShip.AbilityCooldown;
+        var abilityMessage = _simulation.TryActivateSelectedAbility();
+        if (cooldownBefore <= 0 && _simulation.SelectedShip.AbilityCooldown > 0)
+        {
+            AdvanceTutorial(TutorialAction.ActivateAbility);
+            PlayCue(TacticalCue.Ability, $"{_simulation.SelectedShip.Name} ability activated");
+        }
+        SetStatus(abilityMessage);
+        AddLog(abilityMessage);
+    }
+
+    private void HandleGamepadButton(JoyButton button)
+    {
+        if (_commandMode)
+        {
+            if (button == JoyButton.B) CloseCommandLine("Command cancelled");
+            return;
+        }
+        if (_showLocalAiSetup)
+        {
+            if (button is JoyButton.Back or JoyButton.B) _showLocalAiSetup = false;
+            return;
+        }
+        if (_showSettings)
+        {
+            if (button is JoyButton.Back or JoyButton.B) _showSettings = false;
+            return;
+        }
+        if (_showMissionSelect)
+        {
+            if (button is JoyButton.Back or JoyButton.B or JoyButton.X) _showMissionSelect = false;
+            return;
+        }
+        if (_showHelp)
+        {
+            if (button is JoyButton.A or JoyButton.Start) _showHelp = false;
+            return;
+        }
+
+        switch (button)
+        {
+            case JoyButton.LeftShoulder:
+            case JoyButton.RightShoulder:
+                _simulation.CycleSelectedShip();
+                AdvanceTutorial(TutorialAction.SwitchShip);
+                break;
+            case JoyButton.B:
+                ActivateSelectedAbility();
+                break;
+            case JoyButton.Y:
+                CaptureVoiceCommand();
+                break;
+            case JoyButton.X:
+                _showMissionSelect = true;
+                break;
+            case JoyButton.Start:
+                _paused = !_paused;
+                break;
+            case JoyButton.Back:
+                _showSettings = true;
+                break;
+        }
+    }
+
+    private void HandleSettingsInput(Key key)
+    {
+        switch (key)
+        {
+            case Key.F10:
+            case Key.Escape:
+                _showSettings = false;
+                return;
+            case Key.A:
+                var nextVolume = _settings.MasterVolume <= 0.01 ? 1 :
+                    Math.Round(Math.Max(0, _settings.MasterVolume - 0.25), 2);
+                _settings = _settings with { MasterVolume = nextVolume };
+                break;
+            case Key.C:
+                var modes = Enum.GetValues<ColorVisionMode>();
+                _settings = _settings with
+                {
+                    ColorMode = modes[((int)_settings.ColorMode + 1) % modes.Length]
+                };
+                break;
+            case Key.F:
+                _settings = _settings with { ReduceFlashes = !_settings.ReduceFlashes };
+                break;
+            case Key.U:
+                _settings = _settings with { Subtitles = !_settings.Subtitles };
+                break;
+            case Key.D:
+                var deadzone = _settings.GamepadDeadzone >= 0.4
+                    ? 0.12
+                    : Math.Round(_settings.GamepadDeadzone + 0.1, 2);
+                _settings = _settings with { GamepadDeadzone = deadzone };
+                break;
+            default:
+                return;
+        }
+        _settings = _settings.Normalize();
+        _settingsStore?.Save(_settings);
+        ApplySettings();
+        SetStatus("Settings saved");
+    }
+
+    private void ApplySettings()
+    {
+        var master = AudioServer.GetBusIndex("Master");
+        if (master < 0) return;
+        AudioServer.SetBusMute(master, _settings.MasterVolume <= 0.001);
+        if (_settings.MasterVolume > 0.001)
+            AudioServer.SetBusVolumeDb(master, Mathf.LinearToDb((float)_settings.MasterVolume));
+    }
+
+    private void PlayCue(TacticalCue cue, string caption)
+    {
+        _audio?.Play(cue);
+        if (!_settings.Subtitles) return;
+        _audioCaption = caption;
+        _audioCaptionTime = 2.2;
     }
 
     private void RebuildLocalAiAdapters()
@@ -493,14 +654,14 @@ public sealed partial class Main : Node2D
         _observedBattleStatus = _simulation.Status;
         if (_simulation.Status == BattleStatus.EnemyVictory)
         {
-            _audio?.Play(TacticalCue.Alert);
+            PlayCue(TacticalCue.Alert, "Warning: protected ship lost");
             return;
         }
         if (_simulation.Status != BattleStatus.PlayerVictory) return;
 
         _progress = _progress.Complete(_simulation.Mission.Id);
         _progressStore?.Save(_progress);
-        _audio?.Play(TacticalCue.Victory);
+        PlayCue(TacticalCue.Victory, "Mission accomplished");
         var current = MissionCatalog.IndexOf(_simulation.Mission.Id);
         AddLog(current + 1 < MissionCatalog.All.Count
             ? $"Mission complete. Mission {current + 2} unlocked."
@@ -598,6 +759,7 @@ public sealed partial class Main : Node2D
     private void DrawCombatEvent(CombatEvent combatEvent)
     {
         var life = (float)Math.Clamp(combatEvent.RemainingLife / combatEvent.InitialLife, 0, 1);
+        if (_settings.ReduceFlashes) life *= 0.42f;
         var radius = combatEvent.Type switch
         {
             CombatEventType.MuzzleFlash => 8,
@@ -644,6 +806,12 @@ public sealed partial class Main : Node2D
             DrawPanel(new(480, 132, 640, 42));
             DrawLabel(_tutorial.CurrentPrompt, new(800, 159), 14, new Color("ffd065"),
                 HorizontalAlignment.Center, 610);
+        }
+        if (_settings.Subtitles && _audioCaptionTime > 0)
+        {
+            DrawPanel(new(530, 681, 540, 36));
+            DrawLabel($"♪  {_audioCaption}", new(800, 705), 13, Colors.White,
+                HorizontalAlignment.Center, 510);
         }
     }
 
@@ -719,7 +887,11 @@ public sealed partial class Main : Node2D
 
     private void DrawOverlay()
     {
-        if (_showLocalAiSetup)
+        if (_showSettings)
+        {
+            DrawSettings();
+        }
+        else if (_showLocalAiSetup)
         {
             DrawLocalAiSetup();
         }
@@ -748,16 +920,17 @@ public sealed partial class Main : Node2D
                 ("V", "Local voice command adapter"),
                 ("P / H / R", "Pause, help, restart"),
                 ("M", "Open mission selection"),
-                ("L", "Open local AI setup")
+                ("L", "Open local AI setup"),
+                ("F10 / PAD BACK", "Settings and accessibility")
             };
-            var y = 330;
+            var y = 315;
             foreach (var (key, description) in controls)
             {
                 DrawLabel(key, new(490, y), 14, Cyan);
                 DrawLabel(description, new(700, y), 15, new Color("dce7ee"));
-                y += 38;
+                y += 34;
             }
-            DrawLabel($"Try: “{_simulation.Mission.RecommendedOrder}”", new(800, 683), 14,
+            DrawLabel($"Try: “{_simulation.Mission.RecommendedOrder}”", new(800, 675), 14,
                 new Color("ffd065"), HorizontalAlignment.Center, 700);
             DrawLabel("Press H to enter the battle", new(800, 724), 13,
                 new Color("87b5ca"), HorizontalAlignment.Center, 700);
@@ -842,6 +1015,39 @@ public sealed partial class Main : Node2D
             HorizontalAlignment.Center, 780);
     }
 
+    private void DrawSettings()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.87f));
+        DrawPanel(new(390, 115, 820, 670));
+        DrawLabel("SETTINGS & ACCESSIBILITY", new(800, 185), 31, Colors.White,
+            HorizontalAlignment.Center, 700);
+        DrawLabel("Changes save immediately", new(800, 216), 14, Cyan,
+            HorizontalAlignment.Center, 700);
+
+        var rows = new (string Key, string Name, string Value)[]
+        {
+            ("A", "Master volume", $"{(int)Math.Round(_settings.MasterVolume * 100)}%"),
+            ("C", "Color-vision palette", SplitPascalCase(_settings.ColorMode.ToString())),
+            ("F", "Reduced flashes", _settings.ReduceFlashes ? "ON" : "OFF"),
+            ("U", "Tactical cue captions", _settings.Subtitles ? "ON" : "OFF"),
+            ("D", "Controller deadzone", $"{_settings.GamepadDeadzone:0.00}")
+        };
+        var y = 290;
+        foreach (var (key, name, value) in rows)
+        {
+            DrawPanel(new(470, y - 33, 660, 72));
+            DrawLabel(key, new(505, y + 8), 17, Cyan);
+            DrawLabel(name, new(555, y + 7), 16, Colors.White);
+            DrawLabel(value.ToUpperInvariant(), new(1000, y + 7), 14, new Color("ffd065"),
+                HorizontalAlignment.Right, 100);
+            y += 86;
+        }
+        DrawLabel("Controller: left stick fly • A fire • B ability • shoulders switch ship",
+            new(800, 707), 13, new Color("9bc9dc"), HorizontalAlignment.Center, 700);
+        DrawLabel("F10 or Esc to close", new(800, 750), 13, new Color("87b5ca"),
+            HorizontalAlignment.Center, 700);
+    }
+
     private void DrawSetupRow(float y, string title, bool ready, string detail)
     {
         DrawPanel(new(430, y - 42, 740, 88));
@@ -881,6 +1087,9 @@ public sealed partial class Main : Node2D
     {
         DrawString(ThemeDB.FallbackFont, position, text, alignment, width, size, color);
     }
+
+    private static string SplitPascalCase(string value) => string.Concat(value.Select((character, index) =>
+        index > 0 && char.IsUpper(character) ? " " + character : character.ToString()));
 
     private void DrawBar(Vector2 position, float width, float height, float ratio, Color color)
     {
