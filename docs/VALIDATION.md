@@ -54,6 +54,10 @@ in a normal Godot .NET installation.
 - Six SVG ship assets imported and loaded through Godot's resource pipeline: passed
 - Headless resource leak check after presentation load: passed
 
+The release workflow also performs a clean launch of the exported Linux build
+and requires the smoke marker before it uploads either desktop package. This
+guards against native-only exports that are missing their managed .NET payload.
+
 Expected smoke marker:
 
 ~~~text
@@ -65,6 +69,14 @@ Benchmark marker from this environment:
 ~~~text
 AFC_BENCHMARK_PASS ticks=32400 ticks_per_second=37360
 ~~~
+
+## Release-package checks
+
+The `Build desktop demo` workflow runs on every `main` update and version tag.
+It uses the official Godot 4.7 .NET editor and export templates, exports both
+desktop targets, launch-tests Linux, packages both platforms, and uploads
+checksummed artifacts. Windows remains cross-exported and therefore requires a
+clean Windows launch check before public distribution.
 
 ## Remaining manual checks
 
