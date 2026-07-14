@@ -28,6 +28,8 @@ var tests = new (string Name, Action Body)[]
     ("Local AI configuration persists safely", LocalAiConfigurationPersistsSafely),
     ("Game settings normalize accessibility values", GameSettingsNormalizeValues),
     ("Game settings persist and recover safely", GameSettingsPersistSafely),
+    ("Keyboard bindings cover actions and swap conflicts", InputBindingsCoverActionsAndSwapConflicts),
+    ("Keyboard bindings persist and recover safely", InputBindingsPersistSafely),
     ("Recorded battles replay to the same checksum", RecordedBattlesReplayDeterministically),
     ("Replay files persist and recover safely", ReplayFilesPersistSafely),
     ("Simulation checksum detects state changes", SimulationChecksumDetectsChanges),
@@ -374,6 +376,52 @@ static void GameSettingsPersistSafely()
         Equal(expected, store.Load(), "Settings round-trip");
         File.WriteAllText(path, "[");
         Equal(GameSettings.Default, store.Load(), "Corrupt settings recover safely");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static void InputBindingsCoverActionsAndSwapConflicts()
+{
+    var defaults = InputBindings.Default;
+    Equal(GameActions.All.Count, defaults.Keys.Count, "Every action has a default binding");
+    Equal(GameActions.All.Count, GameActions.All.Select(action => action.Id).Distinct().Count(),
+        "Action identifiers are unique");
+    Equal(GameActions.All.Count, defaults.Keys.Values.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+        "Default bindings do not conflict");
+
+    var rebound = defaults.Rebind(GameActionIds.Thrust, "S");
+    Equal("S", rebound.Get(GameActionIds.Thrust), "Requested key is assigned");
+    Equal("W", rebound.Get(GameActionIds.Reverse), "Conflicting action receives the previous key");
+    var restored = rebound.Reset(GameActionIds.Thrust);
+    Equal("W", restored.Get(GameActionIds.Thrust), "Single action restores its default");
+    Equal("S", restored.Get(GameActionIds.Reverse), "Reset preserves conflict-free bindings");
+}
+
+static void InputBindingsPersistSafely()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"afc-bindings-tests-{Guid.NewGuid():N}");
+    var path = Path.Combine(directory, "input-bindings.json");
+    try
+    {
+        var store = new InputBindingsStore(path);
+        var expected = InputBindings.Default.Rebind(GameActionIds.Fire, "F");
+        store.Save(expected);
+        var loaded = store.Load();
+        foreach (var action in GameActions.All)
+            Equal(expected.Get(action.Id), loaded.Get(action.Id), $"{action.Label} round-trips");
+
+        File.WriteAllText(path, "{ \"Keys\": { \"fire\": \"E\", \"unknown\": \"Z\" } }");
+        var upgraded = store.Load();
+        Equal("E", upgraded.Get(GameActionIds.Fire), "Known bindings survive partial older files");
+        Equal(GameActions.All.Count, upgraded.Keys.Count, "Missing defaults are restored and unknown actions removed");
+
+        File.WriteAllText(path, "not json");
+        var recovered = store.Load();
+        Equal(InputBindings.Default.Get(GameActionIds.Fire), recovered.Get(GameActionIds.Fire),
+            "Corrupt bindings recover to defaults");
     }
     finally
     {

@@ -41,7 +41,8 @@
 - [x] Authoritative command ownership, sequence, and tick-window validation core
 - [ ] Server-authoritative multiplayer transport, lobbies, and desync recovery
 - [x] Persistent settings, gamepad flight/combat, color-vision palettes, captions, and reduced flashes
-- [ ] Full action rebinding plus manual ultrawide and subtitle-language validation
+- [x] Persistent conflict-safe keyboard action rebinding with dynamic HUD and tutorial prompts
+- [ ] Controller rebinding plus manual ultrawide and subtitle-language validation
 - [ ] Signed Windows and Linux packages
 - [x] Tagged CI workflow for unsigned checksummed Windows/Linux packages
 - [ ] Steam Deck verification work

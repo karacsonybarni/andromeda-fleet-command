@@ -64,8 +64,13 @@ public sealed partial class Main : Node2D
     private bool _localAiBusy;
     private GameSettingsStore? _settingsStore;
     private GameSettings _settings = GameSettings.Default;
+    private InputBindingsStore? _bindingsStore;
+    private InputBindings _bindings = InputBindings.Default;
     private CrashReportService? _crashReports;
     private bool _showSettings;
+    private bool _showBindings;
+    private int _bindingSelection;
+    private bool _captureBinding;
     private string _audioCaption = string.Empty;
     private double _audioCaptionTime;
     private BattleReplayStore? _replayStore;
@@ -83,6 +88,9 @@ public sealed partial class Main : Node2D
         var benchmarkMode = commandArguments.Contains("--benchmark", StringComparer.Ordinal);
         _settingsStore = new(ProjectSettings.GlobalizePath("user://settings.json"));
         _settings = _settingsStore.Load();
+        _bindingsStore = new(ProjectSettings.GlobalizePath("user://input-bindings.json"));
+        _bindings = _bindingsStore.Load();
+        _status = $"Press {BindingLabel(GameActionIds.Help)} when ready";
         _crashReports = new(ProjectSettings.GlobalizePath("user://crashes"));
         _replayStore = new(ProjectSettings.GlobalizePath("user://replays"));
         ApplySettings();
@@ -98,8 +106,8 @@ public sealed partial class Main : Node2D
         CreateStars();
         LoadShipArt();
         CreateCommandLine();
-        AddLog($"Mission 1: {_simulation.Mission.Title}. Press H when ready.");
-        AddLog("Enter opens the fleet command channel.");
+        AddLog($"Mission 1: {_simulation.Mission.Title}. Press {BindingLabel(GameActionIds.Help)} when ready.");
+        AddLog($"{BindingLabel(GameActionIds.Command)} opens the fleet command channel.");
         AddLog($"Platform: {_platform.Name}");
         StartReplayRecording();
         if (benchmarkMode)
@@ -140,18 +148,19 @@ public sealed partial class Main : Node2D
             if (_statusTime <= 0) _status = string.Empty;
         }
 
-        if (!_paused && !_showHelp && !_commandMode && _simulation.Status == BattleStatus.Active)
+        if (!_paused && !_showHelp && !_commandMode && !_showSettings && !_showBindings &&
+            !_showMissionSelect && !_showLocalAiSetup && _simulation.Status == BattleStatus.Active)
         {
             _accumulator += Math.Min(delta, 0.2);
             var joyX = Input.GetJoyAxis(0, JoyAxis.LeftX);
             var joyY = Input.GetJoyAxis(0, JoyAxis.LeftY);
             var deadzone = (float)_settings.GamepadDeadzone;
             var manualInput = new ManualInput(
-                Input.IsKeyPressed(Key.W) || joyY < -deadzone,
-                Input.IsKeyPressed(Key.S) || joyY > deadzone,
-                Input.IsKeyPressed(Key.A) || joyX < -deadzone,
-                Input.IsKeyPressed(Key.D) || joyX > deadzone,
-                Input.IsKeyPressed(Key.Space) || Input.IsJoyButtonPressed(0, JoyButton.A));
+                IsActionPressed(GameActionIds.Thrust) || joyY < -deadzone,
+                IsActionPressed(GameActionIds.Reverse) || joyY > deadzone,
+                IsActionPressed(GameActionIds.TurnLeft) || joyX < -deadzone,
+                IsActionPressed(GameActionIds.TurnRight) || joyX > deadzone,
+                IsActionPressed(GameActionIds.Fire) || Input.IsJoyButtonPressed(0, JoyButton.A));
             if (manualInput != ManualInput.None) AdvanceTutorial(TutorialAction.ManualControl);
             _replayRecorder?.RecordInput(_simulationTick, manualInput);
             _simulation.SetManualInput(manualInput);
@@ -229,6 +238,13 @@ public sealed partial class Main : Node2D
             return;
         }
 
+        if (_showBindings)
+        {
+            HandleBindingsInput(key.Keycode);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (_showSettings)
         {
             HandleSettingsInput(key.Keycode);
@@ -238,7 +254,7 @@ public sealed partial class Main : Node2D
 
         if (_showMissionSelect)
         {
-            if (key.Keycode == Key.M || key.Keycode == Key.Escape)
+            if (IsActionKey(key.Keycode, GameActionIds.Missions) || key.Keycode == Key.Escape)
                 _showMissionSelect = false;
             else if (key.Keycode is Key.Key1 or Key.Key2 or Key.Key3)
                 LoadMission((int)key.Keycode - (int)Key.Key1);
@@ -246,67 +262,72 @@ public sealed partial class Main : Node2D
             return;
         }
 
-        switch (key.Keycode)
+        if (IsActionKey(key.Keycode, GameActionIds.Help))
         {
-            case Key.H:
-                _showHelp = !_showHelp;
-                break;
-            case Key.Enter when !_showHelp:
-                OpenCommandLine();
-                break;
-            case Key.V when !_showHelp:
-                CaptureVoiceCommand();
-                break;
-            case Key.Q when !_showHelp:
-                ActivateSelectedAbility();
-                break;
-            case Key.P when !_showHelp:
-                _paused = !_paused;
-                break;
-            case Key.R when !_showHelp:
-                Restart();
-                break;
-            case Key.M when !_showHelp:
-                _showMissionSelect = true;
-                break;
-            case Key.L:
-                _showLocalAiSetup = true;
-                RefreshLocalAiStatus();
-                break;
-            case Key.F10:
-                _showSettings = true;
-                break;
-            case Key.N when !_showHelp && _simulation.Status == BattleStatus.PlayerVictory:
-                LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
-                break;
-            case Key.Tab when !_showHelp:
-                CyclePlayerShip();
-                break;
-            case Key.Key1 when !_showHelp:
-                SelectPlayerShip(0);
-                break;
-            case Key.Key2 when !_showHelp:
-                SelectPlayerShip(1);
-                break;
-            case Key.Key3 when !_showHelp:
-                SelectPlayerShip(2);
-                break;
-            case Key.Key4 when !_showHelp:
-                SelectPlayerShip(3);
-                break;
-            case Key.F7:
-                RunBenchmark(false);
-                break;
-            case Key.F8:
-                OS.ShellOpen("https://github.com/karacsonybarni/andromeda-fleet-command/issues/new/choose");
-                SetStatus("Opened the feedback form");
-                break;
-            case Key.F9:
-                ValidateLatestReplay();
-                break;
-            case Key.Escape:
-                GetTree().Quit();
-                break;
+            _showHelp = !_showHelp;
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Command))
+        {
+            OpenCommandLine();
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Voice))
+        {
+            CaptureVoiceCommand();
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Ability))
+        {
+            ActivateSelectedAbility();
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Pause))
+        {
+            _paused = !_paused;
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Restart))
+        {
+            Restart();
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Missions))
+        {
+            _showMissionSelect = true;
+        }
+        else if (!_showHelp && _simulation.Status == BattleStatus.PlayerVictory &&
+                 IsActionKey(key.Keycode, GameActionIds.NextMission))
+        {
+            LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.SwitchShip))
+        {
+            CyclePlayerShip();
+        }
+        else if (!_showHelp && key.Keycode is >= Key.Key1 and <= Key.Key4)
+        {
+            SelectPlayerShip((int)key.Keycode - (int)Key.Key1);
+        }
+        else
+        {
+            switch (key.Keycode)
+            {
+                case Key.L:
+                    _showLocalAiSetup = true;
+                    RefreshLocalAiStatus();
+                    break;
+                case Key.F10:
+                    _showSettings = true;
+                    break;
+                case Key.F7:
+                    RunBenchmark(false);
+                    break;
+                case Key.F8:
+                    OS.ShellOpen("https://github.com/karacsonybarni/andromeda-fleet-command/issues/new/choose");
+                    SetStatus("Opened the feedback form");
+                    break;
+                case Key.F9:
+                    ValidateLatestReplay();
+                    break;
+                case Key.Escape:
+                    GetTree().Quit();
+                    break;
+            }
         }
         GetViewport().SetInputAsHandled();
     }
@@ -466,6 +487,15 @@ public sealed partial class Main : Node2D
             if (button is JoyButton.Back or JoyButton.B) _showLocalAiSetup = false;
             return;
         }
+        if (_showBindings)
+        {
+            if (button is JoyButton.Back or JoyButton.B)
+            {
+                _captureBinding = false;
+                _showBindings = false;
+            }
+            return;
+        }
         if (_showSettings)
         {
             if (button is JoyButton.Back or JoyButton.B) _showSettings = false;
@@ -538,6 +568,11 @@ public sealed partial class Main : Node2D
                     : Math.Round(_settings.GamepadDeadzone + 0.1, 2);
                 _settings = _settings with { GamepadDeadzone = deadzone };
                 break;
+            case Key.K:
+                _showSettings = false;
+                _showBindings = true;
+                _captureBinding = false;
+                return;
             default:
                 return;
         }
@@ -546,6 +581,86 @@ public sealed partial class Main : Node2D
         ApplySettings();
         SetStatus("Settings saved");
     }
+
+    private void HandleBindingsInput(Key key)
+    {
+        if (_captureBinding)
+        {
+            if (key == Key.Escape)
+            {
+                _captureBinding = false;
+                SetStatus("Binding cancelled");
+                return;
+            }
+            if (IsReservedBindingKey(key))
+            {
+                SetStatus("That key is reserved for menus, ship selection, or diagnostics");
+                return;
+            }
+
+            var action = GameActions.All[_bindingSelection];
+            _bindings = _bindings.Rebind(action.Id, key.ToString());
+            _bindingsStore?.Save(_bindings);
+            _captureBinding = false;
+            SetStatus($"{action.Label} bound to {BindingLabel(action.Id)}");
+            return;
+        }
+
+        switch (key)
+        {
+            case Key.Up:
+                _bindingSelection = (_bindingSelection - 1 + GameActions.All.Count) % GameActions.All.Count;
+                break;
+            case Key.Down:
+                _bindingSelection = (_bindingSelection + 1) % GameActions.All.Count;
+                break;
+            case Key.Enter:
+                _captureBinding = true;
+                break;
+            case Key.Backspace:
+                var selected = GameActions.All[_bindingSelection];
+                _bindings = _bindings.Reset(selected.Id);
+                _bindingsStore?.Save(_bindings);
+                SetStatus($"{selected.Label} restored to {BindingLabel(selected.Id)}");
+                break;
+            case Key.R:
+                _bindings = InputBindings.Default;
+                _bindingsStore?.Save(_bindings);
+                SetStatus("Keyboard bindings restored to defaults");
+                break;
+            case Key.K:
+            case Key.Escape:
+                _showBindings = false;
+                _showSettings = true;
+                break;
+        }
+    }
+
+    private Key BoundKey(string actionId)
+    {
+        var configured = _bindings.Get(actionId);
+        if (Enum.TryParse<Key>(configured, true, out var key) && key != Key.None) return key;
+        var fallback = GameActions.Find(actionId)?.DefaultKey ?? nameof(Key.None);
+        return Enum.TryParse<Key>(fallback, true, out key) ? key : Key.None;
+    }
+
+    private bool IsActionPressed(string actionId) => Input.IsKeyPressed(BoundKey(actionId));
+
+    private bool IsActionKey(Key key, string actionId) => key == BoundKey(actionId);
+
+    private string BindingLabel(string actionId) => KeyLabel(BoundKey(actionId));
+
+    private static string KeyLabel(Key key) => key switch
+    {
+        Key.Space => "SPACE",
+        Key.Enter => "ENTER",
+        Key.Tab => "TAB",
+        Key.Backspace => "BACKSPACE",
+        _ => key.ToString().ToUpperInvariant()
+    };
+
+    private static bool IsReservedBindingKey(Key key) => key is Key.None or Key.Escape or Key.L or
+        Key.F7 or Key.F8 or Key.F9 or Key.F10 or Key.Key1 or Key.Key2 or Key.Key3 or Key.Key4;
 
     private void ApplySettings()
     {
@@ -856,7 +971,26 @@ public sealed partial class Main : Node2D
         }
 
         SetStatus($"{completed.Title.ToUpperInvariant()} COMPLETE • {_tutorial.CurrentStep!.Title}");
-        AddLog(_tutorial.GetPrompt(_lastInputWasController));
+        AddLog(TutorialPrompt());
+    }
+
+    private string TutorialPrompt()
+    {
+        if (_lastInputWasController || _tutorial.IsComplete) return _tutorial.GetPrompt(_lastInputWasController);
+        return _tutorial.CurrentStep!.Action switch
+        {
+            TutorialAction.SwitchShip =>
+                $"Press {BindingLabel(GameActionIds.SwitchShip)} or 1–4 to take another helm",
+            TutorialAction.ManualControl =>
+                $"Fly with {BindingLabel(GameActionIds.Thrust)}/{BindingLabel(GameActionIds.Reverse)} and " +
+                $"{BindingLabel(GameActionIds.TurnLeft)}/{BindingLabel(GameActionIds.TurnRight)}; " +
+                $"fire with {BindingLabel(GameActionIds.Fire)}",
+            TutorialAction.IssueOrder =>
+                $"Press {BindingLabel(GameActionIds.Command)}, type an order, then confirm it",
+            TutorialAction.ActivateAbility =>
+                $"Press {BindingLabel(GameActionIds.Ability)} to activate this ship’s tactical ability",
+            _ => _tutorial.CurrentPrompt
+        };
     }
 
     private void DrawSpace()
@@ -1050,7 +1184,10 @@ public sealed partial class Main : Node2D
         DrawMeter(new(36, 830), "ENERGY", (float)ship.EnergyRatio, new Color("ffc74d"));
         DrawLabel($"{ship.Order.Type.ToString().ToUpperInvariant()}  •  {(int)ship.Velocity.Length} m/s",
             new(36, 860), 11, new Color("7dacC6"));
-        var ability = ship.AbilityCooldown <= 0 ? "Q  ABILITY READY" : $"Q  {Math.Ceiling(ship.AbilityCooldown)}s";
+        var abilityKey = BindingLabel(GameActionIds.Ability);
+        var ability = ship.AbilityCooldown <= 0
+            ? $"{abilityKey}  ABILITY READY"
+            : $"{abilityKey}  {Math.Ceiling(ship.AbilityCooldown)}s";
         DrawLabel(ability, new(205, 860), 11, ship.AbilityCooldown <= 0 ? new Color("ffd065") : new Color("6f8794"));
     }
 
@@ -1063,7 +1200,8 @@ public sealed partial class Main : Node2D
     private void DrawCommandLog()
     {
         DrawPanel(new(345, 745, 740, 131));
-        DrawLabel("COMMAND CHANNEL  •  ENTER TO ISSUE ORDER", new(361, 769), 13, Cyan);
+        DrawLabel($"COMMAND CHANNEL  •  {BindingLabel(GameActionIds.Command)} TO ISSUE ORDER",
+            new(361, 769), 13, Cyan);
         var y = 793;
         foreach (var line in _log.Take(4))
         {
@@ -1086,7 +1224,11 @@ public sealed partial class Main : Node2D
 
     private void DrawOverlay()
     {
-        if (_showSettings)
+        if (_showBindings)
+        {
+            DrawBindings();
+        }
+        else if (_showSettings)
         {
             DrawSettings();
         }
@@ -1116,14 +1258,17 @@ public sealed partial class Main : Node2D
                 HorizontalAlignment.Center, 750);
             var controls = new[]
             {
-                ("1–4 / TAB", "Switch controlled ship"),
-                ("W S / A D", "Thrust and rotate"),
-                ("SPACE", "Fire at nearest target"),
-                ("ENTER", "Type a natural-language fleet order"),
-                ("Q", "Use the selected ship’s tactical ability"),
-                ("V", "Local voice command adapter"),
-                ("P / H / R", "Pause, help, restart"),
-                ("M", "Open mission selection"),
+                ($"1–4 / {BindingLabel(GameActionIds.SwitchShip)}", "Switch controlled ship"),
+                ($"{BindingLabel(GameActionIds.Thrust)} {BindingLabel(GameActionIds.Reverse)} / " +
+                 $"{BindingLabel(GameActionIds.TurnLeft)} {BindingLabel(GameActionIds.TurnRight)}",
+                    "Thrust and rotate"),
+                (BindingLabel(GameActionIds.Fire), "Fire at nearest target"),
+                (BindingLabel(GameActionIds.Command), "Type a natural-language fleet order"),
+                (BindingLabel(GameActionIds.Ability), "Use the selected ship’s tactical ability"),
+                (BindingLabel(GameActionIds.Voice), "Local voice command adapter"),
+                ($"{BindingLabel(GameActionIds.Pause)} / {BindingLabel(GameActionIds.Help)} / " +
+                 BindingLabel(GameActionIds.Restart), "Pause, help, restart"),
+                (BindingLabel(GameActionIds.Missions), "Open mission selection"),
                 ("L", "Open local AI setup"),
                 ("F10 / PAD BACK", "Settings and accessibility")
             };
@@ -1136,24 +1281,28 @@ public sealed partial class Main : Node2D
             }
             DrawLabel($"Try: “{_simulation.Mission.RecommendedOrder}”", new(800, 675), 14,
                 new Color("ffd065"), HorizontalAlignment.Center, 700);
-            DrawLabel("Press H to enter the battle", new(800, 724), 13,
+            DrawLabel($"Press {BindingLabel(GameActionIds.Help)} to enter the battle", new(800, 724), 13,
                 new Color("87b5ca"), HorizontalAlignment.Center, 700);
         }
         else if (_paused && _simulation.Status == BattleStatus.Active)
         {
-            DrawBanner("PAUSED", "Press P to return to the battle", Cyan);
+            DrawBanner("PAUSED", $"Press {BindingLabel(GameActionIds.Pause)} to return to the battle", Cyan);
         }
         else if (_simulation.Status == BattleStatus.PlayerVictory)
         {
             var index = MissionCatalog.IndexOf(_simulation.Mission.Id);
             var next = index + 1 < MissionCatalog.All.Count
-                ? "Press N for the next mission • R to replay • M for mission select"
-                : "Campaign demo complete • R to replay • M for mission select";
+                ? $"Press {BindingLabel(GameActionIds.NextMission)} for the next mission • " +
+                  $"{BindingLabel(GameActionIds.Restart)} to replay • " +
+                  $"{BindingLabel(GameActionIds.Missions)} for mission select"
+                : $"Campaign demo complete • {BindingLabel(GameActionIds.Restart)} to replay • " +
+                  $"{BindingLabel(GameActionIds.Missions)} for mission select";
             DrawBanner("VICTORY", next, new Color("48eba9"));
         }
         else if (_simulation.Status == BattleStatus.EnemyVictory)
         {
-            DrawBanner("MISSION FAILED", "A protected ship was lost • Press R to try again", Red);
+            DrawBanner("MISSION FAILED",
+                $"A protected ship was lost • Press {BindingLabel(GameActionIds.Restart)} to try again", Red);
         }
     }
 
@@ -1184,10 +1333,12 @@ public sealed partial class Main : Node2D
                 HorizontalAlignment.Center, 190);
             DrawLabel(step.Action switch
             {
-                TutorialAction.SwitchShip => "TAB  /  LB–RB",
-                TutorialAction.ManualControl => "WASD  /  STICK",
-                TutorialAction.IssueOrder => "ENTER  /  VOICE",
-                _ => "Q  /  B"
+                TutorialAction.SwitchShip => $"{BindingLabel(GameActionIds.SwitchShip)}  /  LB–RB",
+                TutorialAction.ManualControl =>
+                    $"{BindingLabel(GameActionIds.Thrust)}{BindingLabel(GameActionIds.TurnLeft)}" +
+                    $"{BindingLabel(GameActionIds.Reverse)}{BindingLabel(GameActionIds.TurnRight)}  /  STICK",
+                TutorialAction.IssueOrder => $"{BindingLabel(GameActionIds.Command)}  /  VOICE",
+                _ => $"{BindingLabel(GameActionIds.Ability)}  /  B"
             }, new(x + 107, 475), 14, color, HorizontalAlignment.Center, 190);
             DrawLabel(step.Purpose, new(x + 107, 523), 12, new Color("9fc5d6"),
                 HorizontalAlignment.Center, 190);
@@ -1195,7 +1346,8 @@ public sealed partial class Main : Node2D
 
         DrawLabel($"Objective after training: {_simulation.Mission.Objective.Title}", new(800, 628), 16,
             new Color("ffd065"), HorizontalAlignment.Center, 900);
-        DrawLabel(_lastInputWasController ? "Press A or START to deploy" : "Press H to deploy",
+        DrawLabel(_lastInputWasController ? "Press A or START to deploy" :
+                $"Press {BindingLabel(GameActionIds.Help)} to deploy",
             new(800, 700), 18, Colors.White, HorizontalAlignment.Center, 900);
         DrawLabel("The battle is paused while this briefing is open", new(800, 730), 12,
             new Color("789bac"), HorizontalAlignment.Center, 900);
@@ -1241,7 +1393,7 @@ public sealed partial class Main : Node2D
         }
         DrawLabel(step.Title.ToUpperInvariant(), new(800, 183), 16, border,
             HorizontalAlignment.Center, 690);
-        DrawLabel(_tutorial.GetPrompt(_lastInputWasController), new(800, 207), 14, Colors.White,
+        DrawLabel(TutorialPrompt(), new(800, 207), 14, Colors.White,
             HorizontalAlignment.Center, 690);
         DrawLabel(step.Purpose, new(800, 226), 11, new Color("8db6c9"),
             HorizontalAlignment.Center, 690);
@@ -1271,7 +1423,8 @@ public sealed partial class Main : Node2D
             if (completed) DrawLabel("COMPLETE", new(1010, y + 12), 13, new Color("48eba9"));
         }
 
-        DrawLabel("Press 1–3 to deploy • M or Esc to close", new(800, 690), 14,
+        DrawLabel($"Press 1–3 to deploy • {BindingLabel(GameActionIds.Missions)} or Esc to close",
+            new(800, 690), 14,
             new Color("ffd065"), HorizontalAlignment.Center, 700);
     }
 
@@ -1338,10 +1491,54 @@ public sealed partial class Main : Node2D
                 HorizontalAlignment.Right, 100);
             y += 86;
         }
+        DrawLabel("K  Customize keyboard controls",
+            new(800, 684), 14, new Color("ffd065"), HorizontalAlignment.Center, 700);
         DrawLabel("Controller: left stick fly • A fire • B ability • shoulders switch ship",
-            new(800, 707), 13, new Color("9bc9dc"), HorizontalAlignment.Center, 700);
+            new(800, 716), 13, new Color("9bc9dc"), HorizontalAlignment.Center, 700);
         DrawLabel("F10 or Esc to close", new(800, 750), 13, new Color("87b5ca"),
             HorizontalAlignment.Center, 700);
+    }
+
+    private void DrawBindings()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.9f));
+        DrawPanel(new(255, 75, 1090, 750));
+        DrawLabel("KEYBOARD CONTROLS", new(800, 140), 31, Colors.White,
+            HorizontalAlignment.Center, 900);
+        DrawLabel("Assignments save immediately • conflicts swap automatically", new(800, 173), 14,
+            Cyan, HorizontalAlignment.Center, 900);
+
+        for (var index = 0; index < GameActions.All.Count; index++)
+        {
+            var action = GameActions.All[index];
+            var column = index / 7;
+            var row = index % 7;
+            var x = 315 + column * 500;
+            var y = 238 + row * 67;
+            var selected = index == _bindingSelection;
+            if (selected)
+                DrawRect(new(x - 16, y - 31, 455, 52), new Color(0.12f, 0.58f, 0.72f, 0.2f));
+            DrawLabel(action.Label.ToUpperInvariant(), new(x, y), 14,
+                selected ? Colors.White : new Color("b8d5e2"));
+            DrawLabel(BindingLabel(action.Id), new(x + 315, y), 15,
+                selected ? new Color("ffd065") : Cyan, HorizontalAlignment.Right, 105);
+        }
+
+        if (_captureBinding)
+        {
+            DrawPanel(new(420, 645, 760, 82));
+            DrawLabel($"PRESS A KEY FOR {GameActions.All[_bindingSelection].Label.ToUpperInvariant()}",
+                new(800, 681), 18, new Color("ffd065"), HorizontalAlignment.Center, 700);
+            DrawLabel("Esc cancels • system and diagnostic keys are reserved", new(800, 708), 12,
+                new Color("a9c7d5"), HorizontalAlignment.Center, 700);
+        }
+        else
+        {
+            DrawLabel("↑/↓ choose  •  Enter rebind  •  Backspace default  •  R reset all",
+                new(800, 705), 14, new Color("ffd065"), HorizontalAlignment.Center, 920);
+        }
+        DrawLabel("K or Esc returns to settings", new(800, 772), 13, new Color("87b5ca"),
+            HorizontalAlignment.Center, 900);
     }
 
     private void DrawSetupRow(float y, string title, bool ready, string detail)
