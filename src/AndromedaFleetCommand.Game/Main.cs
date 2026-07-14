@@ -66,11 +66,14 @@ public sealed partial class Main : Node2D
     private GameSettings _settings = GameSettings.Default;
     private InputBindingsStore? _bindingsStore;
     private InputBindings _bindings = InputBindings.Default;
+    private GamepadBindingsStore? _gamepadBindingsStore;
+    private GamepadBindings _gamepadBindings = GamepadBindings.Default;
     private CrashReportService? _crashReports;
     private bool _showSettings;
     private bool _showBindings;
     private int _bindingSelection;
     private bool _captureBinding;
+    private bool _bindingDeviceGamepad;
     private string _audioCaption = string.Empty;
     private double _audioCaptionTime;
     private BattleReplayStore? _replayStore;
@@ -90,6 +93,8 @@ public sealed partial class Main : Node2D
         _settings = _settingsStore.Load();
         _bindingsStore = new(ProjectSettings.GlobalizePath("user://input-bindings.json"));
         _bindings = _bindingsStore.Load();
+        _gamepadBindingsStore = new(ProjectSettings.GlobalizePath("user://gamepad-bindings.json"));
+        _gamepadBindings = _gamepadBindingsStore.Load();
         _status = $"Press {BindingLabel(GameActionIds.Help)} when ready";
         _crashReports = new(ProjectSettings.GlobalizePath("user://crashes"));
         _replayStore = new(ProjectSettings.GlobalizePath("user://replays"));
@@ -160,7 +165,8 @@ public sealed partial class Main : Node2D
                 IsActionPressed(GameActionIds.Reverse) || joyY > deadzone,
                 IsActionPressed(GameActionIds.TurnLeft) || joyX < -deadzone,
                 IsActionPressed(GameActionIds.TurnRight) || joyX > deadzone,
-                IsActionPressed(GameActionIds.Fire) || Input.IsJoyButtonPressed(0, JoyButton.A));
+                IsActionPressed(GameActionIds.Fire) ||
+                Input.IsJoyButtonPressed(0, BoundButton(GamepadActionIds.Fire)));
             if (manualInput != ManualInput.None) AdvanceTutorial(TutorialAction.ManualControl);
             _replayRecorder?.RecordInput(_simulationTick, manualInput);
             _simulation.SetManualInput(manualInput);
@@ -489,16 +495,20 @@ public sealed partial class Main : Node2D
         }
         if (_showBindings)
         {
-            if (button is JoyButton.Back or JoyButton.B)
-            {
-                _captureBinding = false;
-                _showBindings = false;
-            }
+            HandleGamepadBindingsInput(button);
             return;
         }
         if (_showSettings)
         {
-            if (button is JoyButton.Back or JoyButton.B) _showSettings = false;
+            if (button == JoyButton.Y)
+            {
+                _showSettings = false;
+                _showBindings = true;
+                _bindingDeviceGamepad = true;
+                _bindingSelection = 0;
+                _captureBinding = false;
+            }
+            else if (button is JoyButton.Back or JoyButton.B) _showSettings = false;
             return;
         }
         if (_showMissionSelect)
@@ -512,27 +522,38 @@ public sealed partial class Main : Node2D
             return;
         }
 
-        switch (button)
+        if (IsGamepadButton(button, GamepadActionIds.SwitchShip))
         {
-            case JoyButton.LeftShoulder:
-            case JoyButton.RightShoulder:
-                CyclePlayerShip();
-                break;
-            case JoyButton.B:
-                ActivateSelectedAbility();
-                break;
-            case JoyButton.Y:
-                CaptureVoiceCommand();
-                break;
-            case JoyButton.X:
-                _showMissionSelect = true;
-                break;
-            case JoyButton.Start:
-                _paused = !_paused;
-                break;
-            case JoyButton.Back:
-                _showSettings = true;
-                break;
+            CyclePlayerShip();
+        }
+        else if (IsGamepadButton(button, GamepadActionIds.Ability))
+        {
+            ActivateSelectedAbility();
+        }
+        else if (IsGamepadButton(button, GamepadActionIds.Voice))
+        {
+            CaptureVoiceCommand();
+        }
+        else if (IsGamepadButton(button, GamepadActionIds.Missions))
+        {
+            _showMissionSelect = true;
+        }
+        else if (IsGamepadButton(button, GamepadActionIds.Pause))
+        {
+            _paused = !_paused;
+        }
+        else if (IsGamepadButton(button, GamepadActionIds.Restart))
+        {
+            Restart();
+        }
+        else if (_simulation.Status == BattleStatus.PlayerVictory &&
+                 IsGamepadButton(button, GamepadActionIds.NextMission))
+        {
+            LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
+        }
+        else if (button == JoyButton.Back)
+        {
+            _showSettings = true;
         }
     }
 
@@ -571,6 +592,8 @@ public sealed partial class Main : Node2D
             case Key.K:
                 _showSettings = false;
                 _showBindings = true;
+                _bindingDeviceGamepad = false;
+                _bindingSelection = 0;
                 _captureBinding = false;
                 return;
             default:
@@ -584,6 +607,52 @@ public sealed partial class Main : Node2D
 
     private void HandleBindingsInput(Key key)
     {
+        if (_bindingDeviceGamepad)
+        {
+            if (_captureBinding)
+            {
+                if (key == Key.Escape)
+                {
+                    _captureBinding = false;
+                    SetStatus("Controller binding cancelled");
+                }
+                return;
+            }
+            switch (key)
+            {
+                case Key.Up:
+                    MoveBindingSelection(-1, GamepadActions.All.Count);
+                    break;
+                case Key.Down:
+                    MoveBindingSelection(1, GamepadActions.All.Count);
+                    break;
+                case Key.Enter:
+                    _captureBinding = true;
+                    break;
+                case Key.Backspace:
+                    var selected = GamepadActions.All[_bindingSelection];
+                    _gamepadBindings = _gamepadBindings.Reset(selected.Id);
+                    _gamepadBindingsStore?.Save(_gamepadBindings);
+                    SetStatus($"{selected.Label} restored to {GamepadButtonLabel(selected.Id)}");
+                    break;
+                case Key.R:
+                    _gamepadBindings = GamepadBindings.Default;
+                    _gamepadBindingsStore?.Save(_gamepadBindings);
+                    SetStatus("Controller bindings restored to defaults");
+                    break;
+                case Key.G:
+                    _bindingDeviceGamepad = false;
+                    _bindingSelection = 0;
+                    break;
+                case Key.K:
+                case Key.Escape:
+                    _showBindings = false;
+                    _showSettings = true;
+                    break;
+            }
+            return;
+        }
+
         if (_captureBinding)
         {
             if (key == Key.Escape)
@@ -609,10 +678,10 @@ public sealed partial class Main : Node2D
         switch (key)
         {
             case Key.Up:
-                _bindingSelection = (_bindingSelection - 1 + GameActions.All.Count) % GameActions.All.Count;
+                MoveBindingSelection(-1, GameActions.All.Count);
                 break;
             case Key.Down:
-                _bindingSelection = (_bindingSelection + 1) % GameActions.All.Count;
+                MoveBindingSelection(1, GameActions.All.Count);
                 break;
             case Key.Enter:
                 _captureBinding = true;
@@ -628,6 +697,10 @@ public sealed partial class Main : Node2D
                 _bindingsStore?.Save(_bindings);
                 SetStatus("Keyboard bindings restored to defaults");
                 break;
+            case Key.G:
+                _bindingDeviceGamepad = true;
+                _bindingSelection = 0;
+                break;
             case Key.K:
             case Key.Escape:
                 _showBindings = false;
@@ -635,6 +708,77 @@ public sealed partial class Main : Node2D
                 break;
         }
     }
+
+    private void HandleGamepadBindingsInput(JoyButton button)
+    {
+        if (!_bindingDeviceGamepad)
+        {
+            if (button == JoyButton.LeftShoulder)
+            {
+                _bindingDeviceGamepad = true;
+                _bindingSelection = 0;
+            }
+            else if (button is JoyButton.Back or JoyButton.B)
+            {
+                _captureBinding = false;
+                _showBindings = false;
+                _showSettings = true;
+            }
+            return;
+        }
+
+        if (_captureBinding)
+        {
+            if (button == JoyButton.Back)
+            {
+                _captureBinding = false;
+                SetStatus("Controller binding cancelled");
+                return;
+            }
+            var action = GamepadActions.All[_bindingSelection];
+            _gamepadBindings = _gamepadBindings.Rebind(action.Id, button.ToString());
+            _gamepadBindingsStore?.Save(_gamepadBindings);
+            _captureBinding = false;
+            SetStatus($"{action.Label} bound to {GamepadButtonLabel(action.Id)}");
+            return;
+        }
+
+        switch (button)
+        {
+            case JoyButton.DpadUp:
+                MoveBindingSelection(-1, GamepadActions.All.Count);
+                break;
+            case JoyButton.DpadDown:
+                MoveBindingSelection(1, GamepadActions.All.Count);
+                break;
+            case JoyButton.A:
+                _captureBinding = true;
+                break;
+            case JoyButton.X:
+                var selected = GamepadActions.All[_bindingSelection];
+                _gamepadBindings = _gamepadBindings.Reset(selected.Id);
+                _gamepadBindingsStore?.Save(_gamepadBindings);
+                SetStatus($"{selected.Label} restored to {GamepadButtonLabel(selected.Id)}");
+                break;
+            case JoyButton.Y:
+                _gamepadBindings = GamepadBindings.Default;
+                _gamepadBindingsStore?.Save(_gamepadBindings);
+                SetStatus("Controller bindings restored to defaults");
+                break;
+            case JoyButton.LeftShoulder:
+                _bindingDeviceGamepad = false;
+                _bindingSelection = 0;
+                break;
+            case JoyButton.Back:
+            case JoyButton.B:
+                _showBindings = false;
+                _showSettings = true;
+                break;
+        }
+    }
+
+    private void MoveBindingSelection(int delta, int count) =>
+        _bindingSelection = (_bindingSelection + delta + count) % count;
 
     private Key BoundKey(string actionId)
     {
@@ -648,6 +792,18 @@ public sealed partial class Main : Node2D
 
     private bool IsActionKey(Key key, string actionId) => key == BoundKey(actionId);
 
+    private JoyButton BoundButton(string actionId)
+    {
+        var configured = _gamepadBindings.Get(actionId);
+        if (Enum.TryParse<JoyButton>(configured, true, out var button)) return button;
+        var fallback = GamepadActions.Find(actionId)?.DefaultButton ?? nameof(JoyButton.A);
+        return Enum.TryParse<JoyButton>(fallback, true, out button) ? button : JoyButton.A;
+    }
+
+    private bool IsGamepadButton(JoyButton button, string actionId) => button == BoundButton(actionId);
+
+    private string GamepadButtonLabel(string actionId) => ButtonLabel(BoundButton(actionId));
+
     private string BindingLabel(string actionId) => KeyLabel(BoundKey(actionId));
 
     private static string KeyLabel(Key key) => key switch
@@ -657,6 +813,19 @@ public sealed partial class Main : Node2D
         Key.Tab => "TAB",
         Key.Backspace => "BACKSPACE",
         _ => key.ToString().ToUpperInvariant()
+    };
+
+    private static string ButtonLabel(JoyButton button) => button switch
+    {
+        JoyButton.LeftShoulder => "LB",
+        JoyButton.RightShoulder => "RB",
+        JoyButton.LeftStick => "L3",
+        JoyButton.RightStick => "R3",
+        JoyButton.DpadUp => "D-PAD ↑",
+        JoyButton.DpadDown => "D-PAD ↓",
+        JoyButton.DpadLeft => "D-PAD ←",
+        JoyButton.DpadRight => "D-PAD →",
+        _ => button.ToString().ToUpperInvariant()
     };
 
     private static bool IsReservedBindingKey(Key key) => key is Key.None or Key.Escape or Key.L or
@@ -979,7 +1148,22 @@ public sealed partial class Main : Node2D
 
     private string TutorialPrompt()
     {
-        if (_lastInputWasController || _tutorial.IsComplete) return _tutorial.GetPrompt(_lastInputWasController);
+        if (_tutorial.IsComplete) return _tutorial.GetPrompt(_lastInputWasController);
+        if (_lastInputWasController)
+        {
+            return _tutorial.CurrentStep!.Action switch
+            {
+                TutorialAction.SwitchShip =>
+                    $"Press {GamepadButtonLabel(GamepadActionIds.SwitchShip)} to take another helm",
+                TutorialAction.ManualControl =>
+                    $"Fly with the left stick; fire with {GamepadButtonLabel(GamepadActionIds.Fire)}",
+                TutorialAction.IssueOrder =>
+                    $"Press {GamepadButtonLabel(GamepadActionIds.Voice)} and speak a fleet order",
+                TutorialAction.ActivateAbility =>
+                    $"Press {GamepadButtonLabel(GamepadActionIds.Ability)} for this ship’s tactical ability",
+                _ => _tutorial.GetPrompt(true)
+            };
+        }
         return _tutorial.CurrentStep!.Action switch
         {
             TutorialAction.SwitchShip =>
@@ -1187,7 +1371,9 @@ public sealed partial class Main : Node2D
         DrawMeter(new(36, 830), "ENERGY", (float)ship.EnergyRatio, new Color("ffc74d"));
         DrawLabel($"{ship.Order.Type.ToString().ToUpperInvariant()}  •  {(int)ship.Velocity.Length} m/s",
             new(36, 860), 11, new Color("7dacC6"));
-        var abilityKey = BindingLabel(GameActionIds.Ability);
+        var abilityKey = _lastInputWasController
+            ? GamepadButtonLabel(GamepadActionIds.Ability)
+            : BindingLabel(GameActionIds.Ability);
         var ability = ship.AbilityCooldown <= 0
             ? $"{abilityKey}  ABILITY READY"
             : $"{abilityKey}  {Math.Ceiling(ship.AbilityCooldown)}s";
@@ -1289,23 +1475,35 @@ public sealed partial class Main : Node2D
         }
         else if (_paused && _simulation.Status == BattleStatus.Active)
         {
-            DrawBanner("PAUSED", $"Press {BindingLabel(GameActionIds.Pause)} to return to the battle", Cyan);
+            var pause = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.Pause)
+                : BindingLabel(GameActionIds.Pause);
+            DrawBanner("PAUSED", $"Press {pause} to return to the battle", Cyan);
         }
         else if (_simulation.Status == BattleStatus.PlayerVictory)
         {
             var index = MissionCatalog.IndexOf(_simulation.Mission.Id);
+            var nextKey = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.NextMission)
+                : BindingLabel(GameActionIds.NextMission);
+            var restart = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.Restart)
+                : BindingLabel(GameActionIds.Restart);
+            var missions = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.Missions)
+                : BindingLabel(GameActionIds.Missions);
             var next = index + 1 < MissionCatalog.All.Count
-                ? $"Press {BindingLabel(GameActionIds.NextMission)} for the next mission • " +
-                  $"{BindingLabel(GameActionIds.Restart)} to replay • " +
-                  $"{BindingLabel(GameActionIds.Missions)} for mission select"
-                : $"Campaign demo complete • {BindingLabel(GameActionIds.Restart)} to replay • " +
-                  $"{BindingLabel(GameActionIds.Missions)} for mission select";
+                ? $"Press {nextKey} for the next mission • {restart} to replay • {missions} for mission select"
+                : $"Campaign demo complete • {restart} to replay • {missions} for mission select";
             DrawBanner("VICTORY", next, new Color("48eba9"));
         }
         else if (_simulation.Status == BattleStatus.EnemyVictory)
         {
+            var restart = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.Restart)
+                : BindingLabel(GameActionIds.Restart);
             DrawBanner("MISSION FAILED",
-                $"A protected ship was lost • Press {BindingLabel(GameActionIds.Restart)} to try again", Red);
+                $"A protected ship was lost • Press {restart} to try again", Red);
         }
     }
 
@@ -1336,12 +1534,15 @@ public sealed partial class Main : Node2D
                 HorizontalAlignment.Center, 190);
             DrawLabel(step.Action switch
             {
-                TutorialAction.SwitchShip => $"{BindingLabel(GameActionIds.SwitchShip)}  /  LB–RB",
+                TutorialAction.SwitchShip =>
+                    $"{BindingLabel(GameActionIds.SwitchShip)}  /  {GamepadButtonLabel(GamepadActionIds.SwitchShip)}",
                 TutorialAction.ManualControl =>
                     $"{BindingLabel(GameActionIds.Thrust)}{BindingLabel(GameActionIds.TurnLeft)}" +
                     $"{BindingLabel(GameActionIds.Reverse)}{BindingLabel(GameActionIds.TurnRight)}  /  STICK",
-                TutorialAction.IssueOrder => $"{BindingLabel(GameActionIds.Command)}  /  VOICE",
-                _ => $"{BindingLabel(GameActionIds.Ability)}  /  B"
+                TutorialAction.IssueOrder =>
+                    $"{BindingLabel(GameActionIds.Command)}  /  {GamepadButtonLabel(GamepadActionIds.Voice)}",
+                _ =>
+                    $"{BindingLabel(GameActionIds.Ability)}  /  {GamepadButtonLabel(GamepadActionIds.Ability)}"
             }, new(x + 107, 475), 14, color, HorizontalAlignment.Center, 190);
             DrawLabel(step.Purpose, new(x + 107, 523), 12, new Color("9fc5d6"),
                 HorizontalAlignment.Center, 190);
@@ -1494,9 +1695,11 @@ public sealed partial class Main : Node2D
                 HorizontalAlignment.Right, 100);
             y += 86;
         }
-        DrawLabel("K  Customize keyboard controls",
+        DrawLabel("K  Keyboard controls     •     PAD Y  Controller buttons",
             new(800, 684), 14, new Color("ffd065"), HorizontalAlignment.Center, 700);
-        DrawLabel("Controller: left stick fly • A fire • B ability • shoulders switch ship",
+        DrawLabel($"Controller: left stick fly • {GamepadButtonLabel(GamepadActionIds.Fire)} fire • " +
+                  $"{GamepadButtonLabel(GamepadActionIds.Ability)} ability • " +
+                  $"{GamepadButtonLabel(GamepadActionIds.SwitchShip)} switch ship",
             new(800, 716), 13, new Color("9bc9dc"), HorizontalAlignment.Center, 700);
         DrawLabel("F10 or Esc to close", new(800, 750), 13, new Color("87b5ca"),
             HorizontalAlignment.Center, 700);
@@ -1506,41 +1709,57 @@ public sealed partial class Main : Node2D
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.9f));
         DrawPanel(new(255, 75, 1090, 750));
-        DrawLabel("KEYBOARD CONTROLS", new(800, 140), 31, Colors.White,
+        DrawLabel(_bindingDeviceGamepad ? "CONTROLLER BUTTONS" : "KEYBOARD CONTROLS",
+            new(800, 140), 31, Colors.White,
             HorizontalAlignment.Center, 900);
-        DrawLabel("Assignments save immediately • conflicts swap automatically", new(800, 173), 14,
+        DrawLabel("Assignments save immediately • conflicts swap automatically • G / LB switches device",
+            new(800, 173), 14,
             Cyan, HorizontalAlignment.Center, 900);
 
-        for (var index = 0; index < GameActions.All.Count; index++)
+        var actions = _bindingDeviceGamepad
+            ? GamepadActions.All.Select(action => (action.Id, action.Label)).ToArray()
+            : GameActions.All.Select(action => (action.Id, action.Label)).ToArray();
+        var rowsPerColumn = _bindingDeviceGamepad ? 4 : 7;
+        for (var index = 0; index < actions.Length; index++)
         {
-            var action = GameActions.All[index];
-            var column = index / 7;
-            var row = index % 7;
+            var action = actions[index];
+            var column = index / rowsPerColumn;
+            var row = index % rowsPerColumn;
             var x = 315 + column * 500;
-            var y = 238 + row * 67;
+            var y = 250 + row * 86;
             var selected = index == _bindingSelection;
             if (selected)
-                DrawRect(new(x - 16, y - 31, 455, 52), new Color(0.12f, 0.58f, 0.72f, 0.2f));
+                DrawRect(new(x - 16, y - 36, 455, 62), new Color(0.12f, 0.58f, 0.72f, 0.2f));
             DrawLabel(action.Label.ToUpperInvariant(), new(x, y), 14,
                 selected ? Colors.White : new Color("b8d5e2"));
-            DrawLabel(BindingLabel(action.Id), new(x + 315, y), 15,
+            var binding = _bindingDeviceGamepad
+                ? GamepadButtonLabel(action.Id)
+                : BindingLabel(action.Id);
+            DrawLabel(binding, new(x + 315, y), 15,
                 selected ? new Color("ffd065") : Cyan, HorizontalAlignment.Right, 105);
         }
 
         if (_captureBinding)
         {
             DrawPanel(new(420, 645, 760, 82));
-            DrawLabel($"PRESS A KEY FOR {GameActions.All[_bindingSelection].Label.ToUpperInvariant()}",
+            DrawLabel($"PRESS A {(_bindingDeviceGamepad ? "BUTTON" : "KEY")} FOR " +
+                      actions[_bindingSelection].Label.ToUpperInvariant(),
                 new(800, 681), 18, new Color("ffd065"), HorizontalAlignment.Center, 700);
-            DrawLabel("Esc cancels • system and diagnostic keys are reserved", new(800, 708), 12,
+            DrawLabel(_bindingDeviceGamepad
+                    ? "PAD BACK cancels • the Settings button stays reserved"
+                    : "Esc cancels • system and diagnostic keys are reserved",
+                new(800, 708), 12,
                 new Color("a9c7d5"), HorizontalAlignment.Center, 700);
         }
         else
         {
-            DrawLabel("↑/↓ choose  •  Enter rebind  •  Backspace default  •  R reset all",
+            DrawLabel(_bindingDeviceGamepad
+                    ? "D-PAD choose  •  A rebind  •  X default  •  Y reset all"
+                    : "↑/↓ choose  •  Enter rebind  •  Backspace default  •  R reset all",
                 new(800, 705), 14, new Color("ffd065"), HorizontalAlignment.Center, 920);
         }
-        DrawLabel("K or Esc returns to settings", new(800, 772), 13, new Color("87b5ca"),
+        DrawLabel(_bindingDeviceGamepad ? "B / BACK returns to settings" : "K or Esc returns to settings",
+            new(800, 772), 13, new Color("87b5ca"),
             HorizontalAlignment.Center, 900);
     }
 

@@ -25,7 +25,7 @@ Ollama model and whisper.cpp.
 - Optional local whisper.cpp push-to-talk with bundled Windows/Linux runtime
 - In-game local-AI readiness panel and model setup (L)
 - Persistent volume, color-vision, reduced-flash, caption, and controller settings
-- Persistent conflict-safe keyboard rebinding with live HUD and tutorial prompts
+- Persistent conflict-safe keyboard and controller-button rebinding with live HUD/tutorial prompts
 - Gamepad flight, weapons, abilities, ship switching, pause, and menu controls
 - Automatic local crash reports under the Godot user-data directory
 - Deterministic input replays with final-state checksum verification
@@ -80,8 +80,8 @@ powershell -ExecutionPolicy Bypass -File scripts/run.ps1
 
 ### Controls
 
-These are the defaults. Press F10, then K to customize every gameplay keyboard action;
-conflicting assignments swap automatically and save immediately.
+These are the defaults. Press F10, then K for keyboard actions, or controller Back,
+then Y for controller buttons. Conflicting assignments swap and save immediately.
 
 - 1–4 or Tab: switch controlled ship
 - W / S: thrust / reverse

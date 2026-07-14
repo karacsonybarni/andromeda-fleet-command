@@ -42,7 +42,8 @@
 - [ ] Server-authoritative multiplayer transport, lobbies, and desync recovery
 - [x] Persistent settings, gamepad flight/combat, color-vision palettes, captions, and reduced flashes
 - [x] Persistent conflict-safe keyboard action rebinding with dynamic HUD and tutorial prompts
-- [ ] Controller rebinding plus manual ultrawide and subtitle-language validation
+- [x] Persistent controller combat/navigation button remapping with controller-only navigation
+- [ ] Manual ultrawide and subtitle-language validation
 - [ ] Signed Windows and Linux packages
 - [x] Tagged CI workflow for unsigned checksummed Windows/Linux packages
 - [ ] Steam Deck verification work
