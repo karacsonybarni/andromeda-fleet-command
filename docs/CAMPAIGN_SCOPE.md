@@ -15,8 +15,8 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Three sequential missions: First Command, Broken Shield, and Black Sun
 - Mission-specific objectives, protected-ship failure conditions, unlocks, and local saves
 - Guided first mission and procedural tactical audio cues
-- Persistent accessibility settings, gamepad controls, conflict-safe keyboard rebinding, captions,
-  reduced flashes, and crash reports
+- Persistent accessibility settings, conflict-safe keyboard/controller remapping, gamepad flight,
+  captions, reduced flashes, and crash reports
 - Deterministic replay validation, a headless benchmark, and structured player-feedback forms
 - Optional Steam achievement hooks, authoritative-session validation, and desktop package automation
 - Automated core tests and an actual Godot launch smoke test
@@ -35,7 +35,7 @@ and long-term Steam goals from being mixed together in campaign copy.
 
 - Steam lobbies, invitations, cloud synchronization, and Workshop
 - Server-authoritative multiplayer transport, lobbies, and desync recovery
-- Controller rebinding plus ultrawide and localized-subtitle validation
+- Ultrawide and localized-subtitle validation
 - Steam Deck verification and public playtest infrastructure
 
 The public campaign page should link to this file and label every generated

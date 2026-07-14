@@ -30,6 +30,8 @@ var tests = new (string Name, Action Body)[]
     ("Game settings persist and recover safely", GameSettingsPersistSafely),
     ("Keyboard bindings cover actions and swap conflicts", InputBindingsCoverActionsAndSwapConflicts),
     ("Keyboard bindings persist and recover safely", InputBindingsPersistSafely),
+    ("Gamepad bindings cover actions and swap conflicts", GamepadBindingsCoverActionsAndSwapConflicts),
+    ("Gamepad bindings persist and recover safely", GamepadBindingsPersistSafely),
     ("Recorded battles replay to the same checksum", RecordedBattlesReplayDeterministically),
     ("Replay files persist and recover safely", ReplayFilesPersistSafely),
     ("Simulation checksum detects state changes", SimulationChecksumDetectsChanges),
@@ -422,6 +424,45 @@ static void InputBindingsPersistSafely()
         var recovered = store.Load();
         Equal(InputBindings.Default.Get(GameActionIds.Fire), recovered.Get(GameActionIds.Fire),
             "Corrupt bindings recover to defaults");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static void GamepadBindingsCoverActionsAndSwapConflicts()
+{
+    var defaults = GamepadBindings.Default;
+    Equal(GamepadActions.All.Count, defaults.Buttons.Count, "Every controller action has a default binding");
+    Equal(GamepadActions.All.Count, defaults.Buttons.Values.Distinct(StringComparer.OrdinalIgnoreCase).Count(),
+        "Default controller bindings do not conflict");
+
+    var rebound = defaults.Rebind(GamepadActionIds.Fire, "B");
+    Equal("B", rebound.Get(GamepadActionIds.Fire), "Requested controller button is assigned");
+    Equal("A", rebound.Get(GamepadActionIds.Ability), "Conflicting action receives the previous button");
+    var restored = rebound.Reset(GamepadActionIds.Fire);
+    Equal("A", restored.Get(GamepadActionIds.Fire), "Controller action restores its default");
+    Equal("B", restored.Get(GamepadActionIds.Ability), "Controller reset remains conflict-free");
+}
+
+static void GamepadBindingsPersistSafely()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"afc-gamepad-tests-{Guid.NewGuid():N}");
+    var path = Path.Combine(directory, "gamepad-bindings.json");
+    try
+    {
+        var store = new GamepadBindingsStore(path);
+        var expected = GamepadBindings.Default.Rebind(GamepadActionIds.Pause, "LeftStick");
+        store.Save(expected);
+        var loaded = store.Load();
+        foreach (var action in GamepadActions.All)
+            Equal(expected.Get(action.Id), loaded.Get(action.Id), $"{action.Label} round-trips");
+
+        File.WriteAllText(path, "broken");
+        var recovered = store.Load();
+        Equal(GamepadBindings.Default.Get(GamepadActionIds.Pause), recovered.Get(GamepadActionIds.Pause),
+            "Corrupt controller bindings recover to defaults");
     }
     finally
     {
