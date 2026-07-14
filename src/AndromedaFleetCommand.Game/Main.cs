@@ -83,6 +83,9 @@ public sealed partial class Main : Node2D
     private bool _lastInputWasController;
     private double _tutorialStepFlash;
     private double _tutorialCelebrationTime;
+    private double _visualTime;
+    private double _combatKick;
+    private Vector2 _worldDrawOffset;
 
     public override void _Ready()
     {
@@ -142,6 +145,8 @@ public sealed partial class Main : Node2D
 
     public override void _Process(double delta)
     {
+        _visualTime += delta;
+        _combatKick = Math.Max(0, _combatKick - delta * 3.8);
         _weaponAudioCooldown = Math.Max(0, _weaponAudioCooldown - delta);
         _tutorialStepFlash = Math.Max(0, _tutorialStepFlash - delta);
         _tutorialCelebrationTime = Math.Max(0, _tutorialCelebrationTime - delta);
@@ -341,12 +346,19 @@ public sealed partial class Main : Node2D
     public override void _Draw()
     {
         DrawSpace();
+        var kick = (float)_combatKick;
+        _worldDrawOffset = _settings.ReduceFlashes
+            ? Vector2.Zero
+            : new Vector2(Mathf.Sin((float)_visualTime * 71f), Mathf.Cos((float)_visualTime * 57f)) * kick;
+        DrawSetTransform(_worldDrawOffset, 0);
         DrawGrid();
         foreach (var projectile in _simulation.Projectiles) DrawProjectile(projectile);
         foreach (var ship in _simulation.Ships.Where(ship => ship.IsAlive)) DrawShip(ship);
+        DrawTargetingOverlay();
         foreach (var combatEvent in _simulation.Events.Where(item => item.Type != CombatEventType.Order &&
                      (!_settings.ReduceFlashes || item.Type != CombatEventType.MuzzleFlash)))
             DrawCombatEvent(combatEvent);
+        DrawSetTransform(Vector2.Zero, 0);
         DrawHud();
         DrawOverlay();
     }
@@ -858,9 +870,11 @@ public sealed partial class Main : Node2D
             {
                 case CombatEventType.Impact:
                     _audio?.Play(TacticalCue.Impact);
+                    _combatKick = Math.Max(_combatKick, 2.4);
                     break;
                 case CombatEventType.Destroyed:
                     PlayCue(TacticalCue.Destruction, combatEvent.Message ?? "Ship destroyed");
+                    _combatKick = Math.Max(_combatKick, 6.5);
                     break;
             }
         }
@@ -1183,12 +1197,26 @@ public sealed partial class Main : Node2D
     private void DrawSpace()
     {
         DrawRect(new(0, 0, 1600, 900), new Color("020915"));
-        DrawCircle(new(1230, 175), 520, new Color(0.06f, 0.18f, 0.32f, 0.23f));
+        var breath = 0.02f + Mathf.Sin((float)_visualTime * 0.18f) * 0.015f;
+        DrawCircle(new(1230, 175), 520, new Color(0.06f, 0.18f, 0.32f, 0.21f + breath));
+        DrawCircle(new(1370, 285), 330, new Color(0.16f, 0.06f, 0.28f, 0.09f));
         foreach (var star in _stars)
         {
-            DrawCircle(star.Position, star.Size, new Color(star.Blue ? 0.58f : 1f, star.Blue ? 0.82f : 0.9f, 1f, star.Alpha));
+            var x = (star.Position.X - (float)_visualTime * star.Depth * 2.4f) % 1600f;
+            if (x < 0) x += 1600f;
+            var y = star.Position.Y + Mathf.Sin((float)_visualTime * (0.35f + star.Depth * 0.08f) +
+                star.Phase) * star.Depth;
+            var twinkle = 0.78f + 0.22f * Mathf.Sin((float)_visualTime * (0.8f + star.Depth * 0.14f) +
+                star.Phase);
+            var color = new Color(star.Blue ? 0.58f : 1f, star.Blue ? 0.82f : 0.9f, 1f,
+                star.Alpha * twinkle);
+            DrawCircle(new(x, y), star.Size, color);
+            if (star.Size > 2.35f)
+                DrawLine(new(x - star.Size * 2.2f, y), new(x + star.Size * 2.2f, y),
+                    new(color, color.A * 0.34f), 1);
         }
         DrawCircle(new(210, 1030), 700, new Color("0b2f56"));
+        DrawArc(new(210, 1030), 686, 3.55f, 5.85f, 96, new Color(0.1f, 0.4f, 0.72f, 0.24f), 16);
         DrawArc(new(210, 1030), 700, 3.55f, 5.85f, 96, new Color(0.2f, 0.68f, 1f, 0.62f), 6);
     }
 
@@ -1199,6 +1227,12 @@ public sealed partial class Main : Node2D
         for (var y = 100; y < 850; y += 100) DrawLine(new(0, y), new(1600, y), color);
         DrawArc(new(800, 450), 210, 0, Mathf.Tau, 96, new(0.2f, 0.75f, 1f, 0.12f));
         DrawArc(new(800, 450), 335, 0, Mathf.Tau, 96, new(0.2f, 0.75f, 1f, 0.1f));
+        var sweepAngle = (float)_visualTime * 0.22f;
+        var sweep = new Vector2(Mathf.Cos(sweepAngle), Mathf.Sin(sweepAngle));
+        DrawLine(new(800, 450), new Vector2(800, 450) + sweep * 335,
+            new Color(Cyan, 0.08f), 2);
+        DrawArc(new(800, 450), 335, sweepAngle - 0.12f, sweepAngle, 10,
+            new Color(Cyan, 0.16f), 4);
     }
 
     private void DrawProjectile(Projectile projectile)
@@ -1206,8 +1240,11 @@ public sealed partial class Main : Node2D
         var color = projectile.Team == Team.Player ? Cyan : Orange;
         var head = ToVector(projectile.Position);
         var tail = ToVector(projectile.Position - projectile.Velocity.Normalized * 22);
-        DrawLine(tail, head, new(color, 0.28f), 8, true);
-        DrawLine(tail, head, color, 2.5f, true);
+        var pulse = 0.72f + Mathf.Sin((float)_visualTime * 26f + head.X * 0.03f) * 0.18f;
+        DrawLine(tail, head, new(color, 0.18f), 12, true);
+        DrawLine(tail, head, new(color, pulse), 3.2f, true);
+        DrawCircle(head, 7, new Color(color, 0.13f));
+        DrawCircle(head, 2.4f, Colors.White);
     }
 
     private void DrawShip(Ship ship)
@@ -1221,6 +1258,13 @@ public sealed partial class Main : Node2D
         if (ship.Velocity.Length > 8)
         {
             var thrust = Mathf.Clamp((float)(ship.Velocity.Length / ship.EffectiveMaxSpeed), 0.2f, 1);
+            var flicker = 0.82f + Mathf.Sin((float)_visualTime * 21f + position.X * 0.04f) * 0.16f;
+            DrawColoredPolygon(new Vector2[]
+            {
+                new(-(float)ship.Stats.Radius * 1.15f, -7),
+                new(-(float)ship.Stats.Radius * 1.35f - 42 * thrust * flicker, 0),
+                new(-(float)ship.Stats.Radius * 1.15f, 7)
+            }, new Color(teamColor, 0.12f));
             DrawLine(new(-(float)ship.Stats.Radius * 1.35f, 0),
                 new(-(float)ship.Stats.Radius * 1.35f - 34 * thrust, 0),
                 new(teamColor, 0.34f), 14, true);
@@ -1241,19 +1285,75 @@ public sealed partial class Main : Node2D
             DrawPolyline(hull.Append(hull[0]).ToArray(), selected ? Colors.White : teamColor,
                 selected ? 3 : 1.7f, true);
         }
-        DrawSetTransform(Vector2.Zero, 0);
+        DrawSetTransform(_worldDrawOffset, 0);
 
         if (selected)
         {
-            DrawArc(position, (float)ship.Stats.Radius + 14, 0, Mathf.Tau, 64, Colors.White, 2);
+            var radius = (float)ship.Stats.Radius + 17;
+            var rotation = (float)_visualTime * 0.72f;
+            for (var segment = 0; segment < 4; segment++)
+            {
+                var start = rotation + segment * Mathf.Pi / 2f;
+                DrawArc(position, radius, start, start + 0.52f, 12, new Color(Colors.White, 0.88f), 2.4f);
+            }
+            var facing = new Vector2(Mathf.Cos((float)ship.Angle), Mathf.Sin((float)ship.Angle));
+            DrawLine(position + facing * radius, position + facing * (radius + 12), Colors.White, 2);
+            DrawCircle(position, radius + 5 + Mathf.Sin((float)_visualTime * 3f) * 2,
+                new Color(Cyan, 0.045f));
         }
         if (ship.ShieldRatio > 0.05)
-            DrawArc(position, (float)ship.Stats.Radius + 8, -0.8f, 0.8f, 28,
-                new(teamColor, (float)(0.12 + ship.ShieldRatio * 0.28)), 3);
+        {
+            var shieldRadius = (float)ship.Stats.Radius + 9;
+            var shieldAlpha = (float)(0.08 + ship.ShieldRatio * 0.24);
+            for (var segment = 0; segment < 3; segment++)
+            {
+                var start = (float)_visualTime * 0.18f + segment * Mathf.Tau / 3f;
+                DrawArc(position, shieldRadius, start, start + 0.86f, 20,
+                    new(teamColor, shieldAlpha), 3);
+            }
+        }
         DrawLabel(ship.Name.ToUpperInvariant(), position + new Vector2(0, -(float)ship.Stats.Radius - 18),
             12, teamColor, HorizontalAlignment.Center, 130);
         DrawBar(new(position.X - 50, position.Y - (float)ship.Stats.Radius - 8), 100, 4,
             (float)ship.HullRatio, teamColor);
+    }
+
+    private void DrawTargetingOverlay()
+    {
+        var selected = _simulation.SelectedShip;
+        if (!selected.IsAlive) return;
+        var target = _simulation.Ships
+            .Where(ship => ship.IsAlive && ship.Team != selected.Team)
+            .OrderBy(ship => (ship.Position - selected.Position).Length)
+            .FirstOrDefault();
+        if (target is null) return;
+
+        var start = ToVector(selected.Position);
+        var end = ToVector(target.Position);
+        var distance = (float)(target.Position - selected.Position).Length;
+        DrawDashedLine(start, end, new Color(Red, 0.19f), 12, 1.4f);
+        var radius = (float)target.Stats.Radius + 14 + Mathf.Sin((float)_visualTime * 4f) * 2;
+        for (var corner = 0; corner < 4; corner++)
+        {
+            var angle = corner * Mathf.Pi / 2f + Mathf.Pi / 4f;
+            var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+            var tangent = new Vector2(-direction.Y, direction.X);
+            var anchor = end + direction * radius;
+            DrawLine(anchor, anchor - direction * 9 + tangent * 6, new Color(Red, 0.82f), 2);
+            DrawLine(anchor, anchor - direction * 9 - tangent * 6, new Color(Red, 0.82f), 2);
+        }
+        DrawLabel($"TARGET  {distance:0} m", end + new Vector2(0, radius + 18), 10,
+            new Color(Red, 0.82f), HorizontalAlignment.Center, 150);
+    }
+
+    private void DrawDashedLine(Vector2 from, Vector2 to, Color color, int segments, float width)
+    {
+        for (var index = 0; index < segments; index += 2)
+        {
+            var a = from.Lerp(to, index / (float)segments);
+            var b = from.Lerp(to, Math.Min(1, (index + 1) / (float)segments));
+            DrawLine(a, b, color, width, true);
+        }
     }
 
     private static Vector2[] CreateHull(Ship ship)
@@ -1281,19 +1381,46 @@ public sealed partial class Main : Node2D
 
     private void DrawCombatEvent(CombatEvent combatEvent)
     {
-        var life = (float)Math.Clamp(combatEvent.RemainingLife / combatEvent.InitialLife, 0, 1);
+        var rawLife = (float)Math.Clamp(combatEvent.RemainingLife / combatEvent.InitialLife, 0, 1);
+        var progress = 1f - rawLife;
+        var life = rawLife;
         if (_settings.ReduceFlashes) life *= 0.42f;
         var radius = combatEvent.Type switch
         {
-            CombatEventType.MuzzleFlash => 8,
-            CombatEventType.Impact => 18,
-            CombatEventType.Destroyed => (int)(64 * (1.2f - life * 0.3f)),
+            CombatEventType.MuzzleFlash => 7 + (int)(progress * 9),
+            CombatEventType.Impact => 12 + (int)(progress * 24),
+            CombatEventType.Destroyed => 28 + (int)(progress * 72),
             _ => 12
         };
         var color = combatEvent.Type == CombatEventType.Destroyed ? Orange : Cyan;
-        DrawArc(ToVector(combatEvent.Position), radius, 0, Mathf.Tau, 48, new(color, life), 4);
+        var position = ToVector(combatEvent.Position);
+        DrawArc(position, radius, 0, Mathf.Tau, 48, new(color, life * 0.9f), 4);
+        DrawArc(position, radius * 0.62f, 0, Mathf.Tau, 36, new(Colors.White, life * 0.34f), 2);
         if (combatEvent.Type == CombatEventType.Destroyed)
-            DrawCircle(ToVector(combatEvent.Position), radius * 0.45f, new Color(1, 0.72f, 0.28f, life * 0.55f));
+        {
+            DrawCircle(position, radius * 0.45f, new Color(1, 0.45f, 0.12f, life * 0.28f));
+            var seed = position.X * 0.017f + position.Y * 0.031f;
+            for (var particle = 0; particle < 12; particle++)
+            {
+                var angle = seed + particle * Mathf.Tau / 12f;
+                var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                var inner = position + direction * radius * 0.22f;
+                var outer = position + direction * radius * (0.72f + (particle % 3) * 0.13f);
+                DrawLine(inner, outer, new Color(particle % 2 == 0 ? Colors.White : Orange,
+                    life * 0.72f), particle % 3 == 0 ? 3 : 1.5f, true);
+            }
+        }
+        else if (combatEvent.Type == CombatEventType.Impact)
+        {
+            var rotation = position.X * 0.04f + position.Y * 0.02f;
+            for (var spark = 0; spark < 6; spark++)
+            {
+                var direction = new Vector2(Mathf.Cos(rotation + spark * Mathf.Pi / 3f),
+                    Mathf.Sin(rotation + spark * Mathf.Pi / 3f));
+                DrawLine(position + direction * 4, position + direction * radius * 1.25f,
+                    new Color(Colors.White, life * 0.75f), 1.5f, true);
+            }
+        }
     }
 
     private void DrawHud()
@@ -1333,6 +1460,23 @@ public sealed partial class Main : Node2D
             DrawLabel($"♪  {_audioCaption}", new(800, 705), 13, Colors.White,
                 HorizontalAlignment.Center, 510);
         }
+        DrawDamageAlert();
+    }
+
+    private void DrawDamageAlert()
+    {
+        var ship = _simulation.SelectedShip;
+        if (!ship.IsAlive || ship.HullRatio >= 0.35) return;
+        var pulse = _settings.ReduceFlashes
+            ? 0.09f
+            : 0.08f + (0.07f * (0.5f + 0.5f * Mathf.Sin((float)_visualTime * 4.2f)));
+        var color = new Color(Red, pulse);
+        DrawRect(new(0, 74, 18, 826), color);
+        DrawRect(new(1582, 74, 18, 826), color);
+        DrawRect(new(0, 74, 1600, 12), color);
+        DrawRect(new(0, 888, 1600, 12), color);
+        DrawLabel("HULL CRITICAL", new(800, 100), 12, new Color(Red, 0.82f),
+            HorizontalAlignment.Center, 200);
     }
 
     private void DrawFactionBar(Vector2 position, float width, float ratio, string text, Color color)
@@ -1832,7 +1976,9 @@ public sealed partial class Main : Node2D
             _stars.Add(new(new(random.Next(1600), random.Next(76, 880)),
                 0.7f + (float)random.NextDouble() * 2.3f,
                 0.25f + (float)random.NextDouble() * 0.7f,
-                random.NextDouble() < 0.42));
+                random.NextDouble() < 0.42,
+                0.35f + (float)random.NextDouble() * 1.65f,
+                (float)random.NextDouble() * Mathf.Tau));
         }
     }
 
@@ -1847,5 +1993,11 @@ public sealed partial class Main : Node2D
     }
 
     private static Vector2 ToVector(Vector2D value) => new((float)value.X, (float)value.Y);
-    private readonly record struct Star(Vector2 Position, float Size, float Alpha, bool Blue);
+    private readonly record struct Star(
+        Vector2 Position,
+        float Size,
+        float Alpha,
+        bool Blue,
+        float Depth,
+        float Phase);
 }
