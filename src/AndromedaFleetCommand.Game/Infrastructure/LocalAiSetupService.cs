@@ -83,6 +83,13 @@ public sealed class LocalAiSetupService : IDisposable
         var executableNames = OperatingSystem.IsWindows()
             ? new[] { "whisper-cli.exe", "whisper.exe" }
             : new[] { "whisper-cli", "whisper" };
+        var processDirectory = Path.GetDirectoryName(Environment.ProcessPath);
+        if (!string.IsNullOrWhiteSpace(processDirectory))
+        foreach (var executable in executableNames)
+        {
+            var bundled = Path.Combine(processDirectory, "tools", "whisper", executable);
+            if (File.Exists(bundled)) return Path.GetFullPath(bundled);
+        }
         foreach (var directory in (Environment.GetEnvironmentVariable("PATH") ?? string.Empty)
                      .Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries))
         foreach (var executable in executableNames)

@@ -776,7 +776,8 @@ public sealed partial class Main : Node2D
         try
         {
             var discoveredCli = LocalAiSetupService.FindWhisperCli();
-            if (_localAiConfiguration.WhisperCli is null && discoveredCli is not null)
+            if ((_localAiConfiguration.WhisperCli is null ||
+                 !File.Exists(_localAiConfiguration.WhisperCli)) && discoveredCli is not null)
             {
                 _localAiConfiguration = _localAiConfiguration with { WhisperCli = discoveredCli };
                 _localAiStore?.Save(_localAiConfiguration);
@@ -840,7 +841,9 @@ public sealed partial class Main : Node2D
             await _localAiSetup.DownloadWhisperModelAsync(destination);
             _localAiConfiguration = _localAiConfiguration with
             {
-                WhisperCli = _localAiConfiguration.WhisperCli ?? LocalAiSetupService.FindWhisperCli(),
+                WhisperCli = _localAiConfiguration.WhisperCli is { } cli && File.Exists(cli)
+                    ? cli
+                    : LocalAiSetupService.FindWhisperCli(),
                 WhisperModel = destination
             };
             _localAiStore?.Save(_localAiConfiguration);
@@ -848,7 +851,7 @@ public sealed partial class Main : Node2D
             _localAiReadiness = await _localAiSetup.CheckAsync(_localAiConfiguration);
             SetStatus(_localAiReadiness.VoiceReady
                 ? "Local voice control ready"
-                : "Speech model installed; whisper-cli still needs to be installed");
+                : "Speech model installed; whisper-cli was not found");
         }
         catch (Exception error)
         {
@@ -1453,7 +1456,7 @@ public sealed partial class Main : Node2D
                 ? "whisper-cli and the base English speech model are ready"
                 : _localAiReadiness.WhisperCliFound
                     ? "whisper-cli found; press W to download the speech model"
-                    : "Press W for the model; install whisper-cli to enable recording");
+                    : "Bundled runtime not found; source builds can provide whisper-cli on PATH");
 
         DrawLabel(_localAiBusy ? "WORKING — this may take several minutes" : _localAiReadiness.Detail,
             new(800, 625), 14, _localAiBusy ? new Color("ffd065") : new Color("b9d9e7"),
