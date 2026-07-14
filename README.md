@@ -22,7 +22,7 @@ Ollama model and whisper.cpp.
 - Manual thrust, steering, and weapons
 - Natural-language typed fleet commands
 - Optional local Ollama interpretation with safe offline fallback
-- Optional local whisper.cpp push-to-talk
+- Optional local whisper.cpp push-to-talk with bundled Windows/Linux runtime
 - In-game local-AI readiness panel and model setup (L)
 - Persistent volume, color-vision, reduced-flash, caption, and controller settings
 - Persistent conflict-safe keyboard rebinding with live HUD and tutorial prompts
@@ -114,9 +114,9 @@ Flagship, move north
 
 ## Optional local AI
 
-The offline parser always works. Press L in-game to scan local services, pull
-the recommended Ollama model, choose GPU-preferred or CPU-only inference, and
-download the whisper.cpp speech model. GPU acceleration is preferred by default:
+The offline parser always works. Desktop packages include the whisper.cpp runtime.
+Press L in-game to scan local services, pull the recommended Ollama model, choose
+GPU-preferred or CPU-only inference, and download the speech model. GPU acceleration is preferred by default:
 the game asks Ollama to offload the full model when supported, with automatic
 CPU fallback when GPU support or VRAM is insufficient.
 
@@ -126,8 +126,7 @@ Environment variables remain available for scripted setups:
 AFC_OLLAMA=true AFC_OLLAMA_GPU=true AFC_OLLAMA_MODEL=qwen3:4b ./scripts/run.sh
 ~~~
 
-To enable voice commands, install whisper-cli, download a whisper.cpp model,
-and set:
+Source builds can use a system whisper-cli and model by setting:
 
 ~~~bash
 AFC_WHISPER_CLI=/path/to/whisper-cli \

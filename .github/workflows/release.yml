@@ -19,6 +19,7 @@ jobs:
       GODOT_VERSION: "4.7"
       GODOT_STATUS: "stable"
       GODOT_DIR: ${{ github.workspace }}/.tools/godot
+      WHISPER_VERSION: "1.9.1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -38,6 +39,15 @@ jobs:
           editor="$(find "$GODOT_DIR" -type f -name 'Godot_*mono_linux.x86_64' | head -1)"
           chmod +x "$editor"
           echo "GODOT_EDITOR=$editor" >> "$GITHUB_ENV"
+      - name: Download verified whisper.cpp runtime bundles
+        shell: bash
+        run: |
+          set -euo pipefail
+          base="https://github.com/ggml-org/whisper.cpp/releases/download/v${WHISPER_VERSION}"
+          curl -fL "$base/whisper-bin-ubuntu-x64.tar.gz" -o /tmp/whisper-linux.tar.gz
+          curl -fL "$base/whisper-bin-x64.zip" -o /tmp/whisper-windows.zip
+          echo "f3bf3b4369a99b54665b0f19b88483b30de27f25963b0414235dea03198515c5  /tmp/whisper-linux.tar.gz" | sha256sum -c -
+          echo "7d8be46ecd31828e1eb7a2ecdd0d6b314feafd82163038ab6092594b0a063539  /tmp/whisper-windows.zip" | sha256sum -c -
       - name: Test and build
         run: |
           dotnet run --project tests/AndromedaFleetCommand.Core.Tests
@@ -49,6 +59,20 @@ jobs:
           "$GODOT_EDITOR" --headless --editor --path . --quit-after 10
           "$GODOT_EDITOR" --headless --path . --export-release "Windows Desktop"
           "$GODOT_EDITOR" --headless --path . --export-release "Linux"
+          mkdir -p dist/linux/tools/whisper dist/windows/tools/whisper
+          tar --no-same-owner --wildcards -xzf /tmp/whisper-linux.tar.gz \
+            -C dist/linux/tools/whisper --strip-components=1 \
+            'whisper-bin-ubuntu-x64/whisper-cli' \
+            'whisper-bin-ubuntu-x64/LICENSE' \
+            'whisper-bin-ubuntu-x64/libwhisper.so*' \
+            'whisper-bin-ubuntu-x64/libggml*.so*'
+          unzip -j -q /tmp/whisper-windows.zip \
+            'Release/whisper-cli.exe' 'Release/whisper.dll' 'Release/ggml*.dll' \
+            -d dist/windows/tools/whisper
+          cp dist/linux/tools/whisper/LICENSE dist/windows/tools/whisper/LICENSE
+          chmod +x dist/linux/tools/whisper/whisper-cli
+          dist/linux/tools/whisper/whisper-cli --version
+          test -s dist/windows/tools/whisper/whisper-cli.exe
           test -x dist/linux/AndromedaFleetCommand.x86_64
           test -z "$(find dist/windows dist/linux -name '*.pdb' -print -quit)"
           smoke_log="$(mktemp)"

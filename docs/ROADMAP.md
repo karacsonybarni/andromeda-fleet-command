@@ -25,7 +25,7 @@
 - [x] Four-beat Captain's Drill for switching, manual flight, fleet orders, and abilities
 - [ ] Validate a first satisfying spoken order within two minutes on supported hardware
 - [x] In-game local-AI readiness diagnostics, Ollama pull, and speech-model download
-- [ ] Bundle whisper.cpp executables per platform for a genuinely one-click voice setup
+- [x] Bundle verified whisper.cpp executables for one-click Windows/Linux voice setup
 - [ ] Performance capture on Steam Deck and mid-range Windows hardware
 - [x] Reproducible three-mission simulation benchmark harness
 - [x] Automatic local crash reports

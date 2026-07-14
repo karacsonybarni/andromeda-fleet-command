@@ -10,7 +10,7 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Manual flight, weapons, and four role-specific tactical abilities
 - Six original scalable vector ship classes with faction tinting and engine/shield effects
 - Typed natural-language orders with a safe offline parser
-- Optional local Ollama interpretation and whisper.cpp push-to-talk adapters
+- Optional local Ollama interpretation and packaged whisper.cpp push-to-talk adapters
 - In-game readiness diagnostics, Ollama model pull, whisper-cli discovery, and speech-model download
 - Three sequential missions: First Command, Broken Shield, and Black Sun
 - Mission-specific objectives, protected-ship failure conditions, unlocks, and local saves
@@ -24,7 +24,7 @@ and long-term Steam goals from being mixed together in campaign copy.
 ## Required before the Indiegogo demo is called complete
 
 - Final art-direction, animation, VFX, and capture polish on the coherent vector fleet set
-- Bundled whisper.cpp executables and measured voice/model latency requirements
+- Measured voice/model latency requirements on supported hardware
 - Mission-duration balancing from external playtests
 - Professional audio mix and voice performances
 - Owner-signed and clean-machine-verified Windows and Linux demo packages

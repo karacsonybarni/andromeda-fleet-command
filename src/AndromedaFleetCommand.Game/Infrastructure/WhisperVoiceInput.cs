@@ -48,7 +48,7 @@ public sealed class WhisperVoiceInput : IDisposable
         _recordEffect is not null && _microphonePlayer is not null;
 
     public string UnavailableReason =>
-        "Voice needs local whisper.cpp: set AFC_WHISPER_CLI and AFC_WHISPER_MODEL";
+        "Voice is not ready: press L, then W to install the local speech model";
 
     public async Task<string> CaptureAsync(CancellationToken cancellationToken = default)
     {
