@@ -16,6 +16,8 @@ Ollama model and whisper.cpp.
 
 - Three sequential missions with distinct objectives and escalating fleet complexity
 - Six coherent scalable vector ship classes with faction tinting, shields, and engine trails
+- Readable fleet-combat presentation with animated star depth, tactical radar sweep, target brackets,
+  projectile bloom, layered shield/thruster effects, impact sparks, explosions, and restrained camera kick
 - A four-beat, controller-aware Captain's Drill that teaches the game by doing
 - Mission briefings, unlocks, and persistent campaign progress
 - Four switchable allied ships with different handling and tactical abilities
@@ -53,7 +55,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for the rationale.
 ### Verified desktop build
 
 The latest clean `main` package is available from the
-[successful desktop-demo workflow](https://github.com/karacsonybarni/andromeda-fleet-command/actions/runs/29088052845).
+[successful desktop-demo workflow](https://github.com/karacsonybarni/andromeda-fleet-command/actions/workflows/release.yml).
 Its artifact contains separate Windows and Linux archives plus portable SHA-256
 checksums. The Linux archive is launch-tested headlessly before upload; the
 Windows archive is cross-exported and still needs a clean Windows playtest.

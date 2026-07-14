@@ -15,6 +15,7 @@
 ## Indiegogo demo
 
 - [x] Replace procedural silhouettes with a coherent six-class scalable vector fleet set
+- [x] Combat-readability pass with targeting, projectile, shield, thruster, impact, and destruction VFX
 - [ ] Final art-direction, animation, VFX, and store-quality capture pass
 - [x] Three playable missions with escalating objectives and command complexity
 - [ ] Tune each mission to 8–12 minutes using external playtest data
