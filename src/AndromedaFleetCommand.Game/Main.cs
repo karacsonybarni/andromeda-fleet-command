@@ -291,10 +291,10 @@ public sealed partial class Main : Node2D
                 _lastIssuedCommand = "All ships, attack the enemy flagship";
                 _lastAcknowledgement = _dispatcher.Dispatch(
                     _rules.Parse(_lastIssuedCommand).Command!, _simulation);
-                _commandPulseTime = 4.5;
+                _commandPulseTime = 12;
                 NextVisualQaStage();
                 break;
-            case 9 when _simulation.ElapsedSeconds >= 2:
+            case 9 when _simulation.ElapsedSeconds >= 8:
                 CaptureVisualQaFrame("10-fleet-battle");
                 GD.Print($"AFC_VISUAL_QA_PASS captures={_visualQaCaptures.Count} directory={_visualQaDirectory}");
                 _visualQa = false;
