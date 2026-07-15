@@ -137,7 +137,7 @@ public sealed partial class Main : Node2D
         }
         if (_visualQa)
         {
-            _visualQaDirectory = Environment.GetEnvironmentVariable("AFC_VISUAL_QA_DIR") ??
+            _visualQaDirectory = System.Environment.GetEnvironmentVariable("AFC_VISUAL_QA_DIR") ??
                                  ProjectSettings.GlobalizePath("user://visual-qa");
             Directory.CreateDirectory(_visualQaDirectory);
             _showHelp = true;
