@@ -37,6 +37,19 @@ public sealed record MissionObjective(
     ShipClass? TargetClass = null,
     string? ProtectedShipId = null);
 
+public sealed record MissionNarrative(
+    string Chapter,
+    string Speaker,
+    IReadOnlyList<string> BriefingLines,
+    IReadOnlyList<string> VictoryLines,
+    IReadOnlyList<string> FailureLines);
+
+public sealed record MissionComplexity(
+    int Rating,
+    string Tier,
+    int SimultaneousThreatGroups,
+    string TacticalFocus);
+
 public sealed record MissionDefinition(
     MissionId Id,
     string Title,
@@ -46,7 +59,9 @@ public sealed record MissionDefinition(
     long Seed,
     IReadOnlyList<ShipSpawn> Ships,
     IReadOnlyList<InitialOrder> InitialOrders,
-    MissionObjective Objective);
+    MissionObjective Objective,
+    MissionNarrative Narrative,
+    MissionComplexity Complexity);
 
 public readonly record struct MissionObjectiveProgress(
     string Label,

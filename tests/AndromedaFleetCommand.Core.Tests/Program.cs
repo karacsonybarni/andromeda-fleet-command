@@ -19,6 +19,8 @@ var tests = new (string Name, Action Body)[]
     ("Damage and victory rules work", DamageAndVictoryRules),
     ("Long battle maintains invariants", LongBattleMaintainsInvariants),
     ("Mission catalog is internally valid", MissionCatalogIsValid),
+    ("Campaign narrative forms a connected three-chapter arc", CampaignNarrativeFormsConnectedArc),
+    ("Mission complexity escalates across the campaign", MissionComplexityEscalates),
     ("Mission objectives determine victory and defeat", MissionObjectivesDetermineStatus),
     ("Total fleet loss records defeat without crashing", TotalFleetLossRecordsDefeatSafely),
     ("Every campaign mission is winnable through representative play", EveryCampaignMissionIsWinnable),
@@ -202,6 +204,66 @@ static void MissionCatalogIsValid()
         True(mission.Objective.ProtectedShipId is null || ids.Contains(mission.Objective.ProtectedShipId),
             $"{mission.Title} protected ship exists");
     }
+}
+
+static void CampaignNarrativeFormsConnectedArc()
+{
+    var missions = MissionCatalog.All;
+    Equal(3, missions.Select(mission => mission.Narrative.Chapter).Distinct().Count(),
+        "Every mission has a distinct chapter");
+    foreach (var mission in missions)
+    {
+        True(mission.Narrative.Speaker.Contains("SERA VEY", StringComparison.Ordinal),
+            $"{mission.Title} retains the campaign's recurring commander");
+        Equal(2, mission.Narrative.BriefingLines.Count, $"{mission.Title} has a concise briefing");
+        Equal(2, mission.Narrative.VictoryLines.Count, $"{mission.Title} has a concise debrief");
+        Equal(2, mission.Narrative.FailureLines.Count, $"{mission.Title} has a concise failure beat");
+        True(mission.Narrative.BriefingLines.Concat(mission.Narrative.VictoryLines)
+                .Concat(mission.Narrative.FailureLines).All(line => !string.IsNullOrWhiteSpace(line)),
+            $"{mission.Title} narrative lines are populated");
+    }
+
+    True(missions[0].Narrative.VictoryLines.Any(line =>
+            line.Contains("Pelagos", StringComparison.OrdinalIgnoreCase)),
+        "Chapter I points directly to Chapter II");
+    True(missions[1].Narrative.VictoryLines.Any(line =>
+            line.Contains("Black Sun", StringComparison.OrdinalIgnoreCase)),
+        "Chapter II reveals the final operation");
+    True(missions[2].Narrative.VictoryLines.Any(line =>
+            line.Contains("Crown Fleet", StringComparison.OrdinalIgnoreCase)),
+        "Chapter III resolves the incident and leaves a restrained sequel hook");
+}
+
+static void MissionComplexityEscalates()
+{
+    var missions = MissionCatalog.All;
+    True(missions.Select(mission => mission.Complexity.Rating).SequenceEqual([1, 2, 3]),
+        "Command ratings advance one step per chapter");
+
+    for (var index = 1; index < missions.Count; index++)
+    {
+        var previous = missions[index - 1];
+        var current = missions[index];
+        True(current.Complexity.SimultaneousThreatGroups > previous.Complexity.SimultaneousThreatGroups,
+            $"{current.Title} adds another simultaneous threat group");
+        True(EnemyCount(current) > EnemyCount(previous),
+            $"{current.Title} has a larger opposing force");
+        True(current.InitialOrders.Count > previous.InitialOrders.Count,
+            $"{current.Title} begins with more active tactical relationships");
+        True(PlayerClassCount(current) >= PlayerClassCount(previous),
+            $"{current.Title} does not reduce the player's available fleet roles");
+    }
+
+    Equal(2, PlayerCount(missions[0]), "Chapter I starts with a readable two-ship detachment");
+    Equal(4, PlayerCount(missions[1]), "Chapter II introduces the full four-role fleet");
+    Equal(4, PlayerCount(missions[2]), "Chapter III preserves the full fleet for layered command");
+
+    static int PlayerCount(MissionDefinition mission) =>
+        mission.Ships.Count(ship => ship.Team == Team.Player);
+    static int EnemyCount(MissionDefinition mission) =>
+        mission.Ships.Count(ship => ship.Team == Team.Enemy);
+    static int PlayerClassCount(MissionDefinition mission) =>
+        mission.Ships.Where(ship => ship.Team == Team.Player).Select(ship => ship.Class).Distinct().Count();
 }
 
 static void MissionObjectivesDetermineStatus()

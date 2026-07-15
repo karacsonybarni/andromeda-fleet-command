@@ -12,7 +12,8 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Typed natural-language orders with a safe offline parser
 - Optional local Ollama interpretation and packaged whisper.cpp push-to-talk adapters
 - In-game readiness diagnostics, Ollama model pull, whisper-cli discovery, and speech-model download
-- Three sequential missions: First Command, Broken Shield, and Black Sun
+- A connected three-chapter storyline, *The Black Sun Incident*: First Command, Broken Shield, and Black Sun
+- Explicit command-complexity progression: orientation, split defence, then full-fleet coordination
 - Mission-specific objectives, protected-ship failure conditions, unlocks, and local saves
 - Guided first mission and procedural tactical audio cues
 - Persistent accessibility settings, conflict-safe keyboard/controller remapping, gamepad flight,

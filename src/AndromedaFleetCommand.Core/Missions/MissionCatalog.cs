@@ -30,7 +30,24 @@ public static class MissionCatalog
                 "Disable the raider leader",
                 "Destroy the raider command ship while keeping your flagship alive.",
                 TargetId: "enemy-raider-leader",
-                ProtectedShipId: "player-flagship")),
+                ProtectedShipId: "player-flagship"),
+            new(
+                "CHAPTER I  •  GHOST SIGNAL",
+                "ADMIRAL SERA VEY  //  ANDROMEDA FLEET COMMAND",
+                [
+                    "Nysa Seven found an impossible star map inside a raider beacon.",
+                    "Save the convoy and seize their command core before every witness is erased."
+                ],
+                [
+                    "The core carries a Ketzal military cipher and one phrase: BLACK SUN.",
+                    "Its next coordinate is Pelagos Corridor. Carrier One is already there."
+                ],
+                [
+                    "The convoy and its beacon are gone. The raiders are erasing the trail.",
+                    "Regroup, Captain. We need that command core."
+                ]),
+            new(1, "ORIENTATION", 1,
+                "Learn direct control, switch hulls, issue one order, and trigger an ability.")),
         new(
             MissionId.BrokenShield,
             "Broken Shield",
@@ -65,7 +82,24 @@ public static class MissionCatalog
                 "Break the bomber wing",
                 "Destroy every bomber before Carrier One is lost.",
                 TargetClass: ShipClass.Bomber,
-                ProtectedShipId: "player-carrier")),
+                ProtectedShipId: "player-carrier"),
+            new(
+                "CHAPTER II  •  THE CIPHER OPENS",
+                "ADMIRAL SERA VEY  //  PRIORITY TRANSMISSION",
+                [
+                    "Pelagos is not a raid. It is a door, and the Ketzal are forcing it open.",
+                    "Keep Carrier One alive long enough to finish decoding the stolen cipher."
+                ],
+                [
+                    "Carrier One has the answer: Black Sun is masking an invasion corridor.",
+                    "The Ketzal command fleet is crossing now. We have one jump to intercept."
+                ],
+                [
+                    "Carrier One is lost, and Black Sun has vanished behind its own signal.",
+                    "Return to Pelagos before the invasion corridor stabilizes."
+                ]),
+            new(2, "SPLIT DEFENCE", 2,
+                "Protect a mobile carrier while multiple wings attack from separate axes.")),
         new(
             MissionId.BlackSun,
             "Black Sun",
@@ -106,7 +140,24 @@ public static class MissionCatalog
                 "Destroy the enemy flagship",
                 "Break the Ketzal command ship while your flagship survives.",
                 TargetId: "enemy-flagship",
-                ProtectedShipId: "player-flagship"))
+                ProtectedShipId: "player-flagship"),
+            new(
+                "CHAPTER III  •  BLACK SUN",
+                "ADMIRAL SERA VEY  //  FRONTIER EMERGENCY",
+                [
+                    "Black Sun is holding the invasion corridor open behind a layered fleet.",
+                    "Break its defenders, preserve our flagship, and sever the Ketzal route."
+                ],
+                [
+                    "Black Sun is dark. The invasion corridor is collapsing behind its fleet.",
+                    "Its final burst said: ‘Crown Fleet, awaken.’ We won the corridor—not the war."
+                ],
+                [
+                    "Our flagship is down and Black Sun still broadcasts into the frontier.",
+                    "The invasion clock is moving. Return before the corridor locks open."
+                ]),
+            new(3, "FLEET COORDINATION", 3,
+                "Manage four roles, layered defenders, protected assets, and a timed ability salvo."))
     ];
 
     public static MissionDefinition Get(MissionId id) =>

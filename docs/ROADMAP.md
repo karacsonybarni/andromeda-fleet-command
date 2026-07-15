@@ -18,6 +18,7 @@
 - [x] Combat-readability pass with targeting, projectile, shield, thruster, impact, and destruction VFX
 - [ ] Final art-direction, animation, VFX, and store-quality capture pass
 - [x] Three playable missions with escalating objectives and command complexity
+- [x] Connected three-chapter storyline with mission briefings, victory debriefs, and failure beats
 - [ ] Tune each mission to 8–12 minutes using external playtest data
 - [x] Procedural acknowledgements, weapons, abilities, tactical alerts, and victory cues
 - [x] Original seamless background theme with a recognizable melodic hook
