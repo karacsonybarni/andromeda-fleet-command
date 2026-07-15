@@ -92,7 +92,7 @@ public static class MissionCatalog
                 new("player-carrier", OrderType.Defend, "player-flagship"),
                 new("player-frigate", OrderType.Intercept, "enemy-bomber-1"),
                 new("player-destroyer", OrderType.Attack, "enemy-flagship"),
-                new("enemy-flagship", OrderType.Attack, "player-flagship"),
+                new("enemy-flagship", OrderType.Hold),
                 new("enemy-carrier", OrderType.Defend, "enemy-flagship"),
                 new("enemy-destroyer-1", OrderType.Defend, "enemy-flagship"),
                 new("enemy-destroyer-2", OrderType.Attack, "player-flagship"),
