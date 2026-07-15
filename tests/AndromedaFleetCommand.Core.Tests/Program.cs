@@ -259,7 +259,7 @@ static void EveryCampaignMissionIsWinnable()
         {
             MissionId.FirstCommand => new[] { "All ships, attack the raider leader" },
             MissionId.BrokenShield => new[] { "All ships, attack the nearest bomber" },
-            _ => new[] { "All ships, attack the enemy flagship" }
+            _ => new[] { "All ships, attack the nearest enemy" }
         };
         foreach (var order in combatOrders) DispatchOrder(order);
         if (mission.Id == MissionId.BrokenShield)
@@ -271,6 +271,8 @@ static void EveryCampaignMissionIsWinnable()
         const int maximumTicks = 60 * 240;
         for (var tick = 0; tick < maximumTicks && simulation.Status == BattleStatus.Active; tick++)
         {
+            if (mission.Id == MissionId.BlackSun && tick == 60 * 8)
+                DispatchOrder("All ships, attack the enemy flagship");
             if (tick > 0 && tick % (60 * 12) == 0)
                 foreach (var order in combatOrders.Skip(mission.Id == MissionId.FirstCommand ? 0 : 1))
                     DispatchOrder(order);
