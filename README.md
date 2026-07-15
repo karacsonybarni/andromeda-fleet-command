@@ -14,7 +14,8 @@ Ollama model and whisper.cpp.
 
 ## Current playable campaign demo
 
-- Three sequential missions with distinct objectives and escalating fleet complexity
+- A connected three-chapter campaign, **The Black Sun Incident**, with in-engine briefings and debriefs
+- Mission complexity that grows from a two-ship orientation to split defence and full-fleet coordination
 - Six coherent scalable vector ship classes with faction tinting, shields, and engine trails
 - Readable fleet-combat presentation with animated star depth, tactical radar sweep, target brackets,
   projectile bloom, layered shield/thruster effects, impact sparks, explosions, and restrained camera kick
