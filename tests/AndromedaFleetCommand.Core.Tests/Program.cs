@@ -20,6 +20,7 @@ var tests = new (string Name, Action Body)[]
     ("Long battle maintains invariants", LongBattleMaintainsInvariants),
     ("Mission catalog is internally valid", MissionCatalogIsValid),
     ("Mission objectives determine victory and defeat", MissionObjectivesDetermineStatus),
+    ("Total fleet loss records defeat without crashing", TotalFleetLossRecordsDefeatSafely),
     ("Every campaign mission is winnable through representative play", EveryCampaignMissionIsWinnable),
     ("Campaign progression unlocks missions sequentially", CampaignProgressionUnlocksMissions),
     ("Campaign progress persists and recovers safely", CampaignProgressPersistsSafely),
@@ -221,6 +222,19 @@ static void MissionObjectivesDetermineStatus()
     failed.FindShip("player-carrier")!.ApplyDamage(10_000);
     failed.Update(BattleSimulation.FixedStep);
     Equal(BattleStatus.EnemyVictory, failed.Status, "Losing protected carrier fails mission");
+}
+
+static void TotalFleetLossRecordsDefeatSafely()
+{
+    var simulation = new BattleSimulation(MissionId.FirstCommand);
+    foreach (var ship in simulation.Ships.Where(ship => ship.Team == Team.Player))
+        ship.ApplyDamage(10_000);
+    simulation.Update(BattleSimulation.FixedStep);
+    Equal(BattleStatus.EnemyVictory, simulation.Status, "Total player fleet loss ends the mission");
+    True(simulation.Events.Any(combatEvent =>
+            combatEvent.Type == CombatEventType.Order &&
+            combatEvent.Message?.Contains("failed", StringComparison.OrdinalIgnoreCase) == true),
+        "Defeat event remains available when no player ship survives");
 }
 
 static void EveryCampaignMissionIsWinnable()
