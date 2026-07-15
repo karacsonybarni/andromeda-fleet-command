@@ -191,9 +191,13 @@ public sealed class BattleSimulation
         SelectPlayerShip(current + 1);
     }
 
-    public void AddOrderEvent(string message) =>
-        _events.Add(new(CombatEventType.Order,
-            _ships.Count == 0 ? Vector2D.Zero : SelectedShip.Position, message, 4.5));
+    public void AddOrderEvent(string message)
+    {
+        var anchor = _ships.FirstOrDefault(ship => ship.IsAlive && ship.Team == Team.Player) ??
+                     _ships.FirstOrDefault(ship => ship.Team == Team.Player) ??
+                     _ships.FirstOrDefault();
+        _events.Add(new(CombatEventType.Order, anchor?.Position ?? Vector2D.Zero, message, 4.5));
+    }
 
     public double FleetStrength(Team team) =>
         _ships.Where(ship => ship.Team == team && ship.IsAlive)
@@ -258,7 +262,7 @@ public sealed class BattleSimulation
             UpdateAttackOrder(ship, threat, dt);
             return;
         }
-        var phase = Math.Abs(ship.Id.GetHashCode(StringComparison.Ordinal) % 7) * 0.8 + ElapsedSeconds * 0.18;
+        var phase = StableHash(ship.Id) % 7 * 0.8 + ElapsedSeconds * 0.18;
         var guardPoint = protectedShip.Position + Vector2D.FromAngle(phase) * 105;
         SteerTo(ship, guardPoint, ship.Stats.MaxSpeed * 0.65, dt);
     }
@@ -451,6 +455,20 @@ public sealed class BattleSimulation
         while (difference > Math.PI) difference -= Math.PI * 2;
         while (difference < -Math.PI) difference += Math.PI * 2;
         return difference;
+    }
+
+    private static uint StableHash(string value)
+    {
+        unchecked
+        {
+            var hash = 2166136261u;
+            foreach (var character in value)
+            {
+                hash ^= character;
+                hash *= 16777619u;
+            }
+            return hash;
+        }
     }
 
     private static int PositiveModulo(int value, int modulo) => (value % modulo + modulo) % modulo;
