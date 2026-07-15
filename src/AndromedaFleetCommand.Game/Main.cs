@@ -267,6 +267,21 @@ public sealed partial class Main : Node2D
                 break;
             case 6:
                 CaptureVisualQaFrame("07-mission-select");
+                _showMissionSelect = false;
+                _simulation.LoadMission(MissionId.BrokenShield);
+                _showHelp = true;
+                NextVisualQaStage();
+                break;
+            case 7:
+                CaptureVisualQaFrame("08-story-briefing");
+                _showHelp = false;
+                _simulation.LoadMission(MissionId.FirstCommand);
+                _simulation.FindShip("enemy-raider-leader")!.ApplyDamage(10_000);
+                _simulation.Update(BattleSimulation.FixedStep);
+                NextVisualQaStage();
+                break;
+            case 8:
+                CaptureVisualQaFrame("09-victory-debrief");
                 GD.Print($"AFC_VISUAL_QA_PASS captures={_visualQaCaptures.Count} directory={_visualQaDirectory}");
                 _visualQa = false;
                 GetTree().Quit();
@@ -1679,15 +1694,27 @@ public sealed partial class Main : Node2D
                 DrawTutorialBriefing();
                 return;
             }
-            DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.75f));
-            DrawPanel(new(370, 120, 860, 650));
+            var mission = _simulation.Mission;
+            DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.78f));
+            DrawPanel(new(320, 90, 960, 720));
+            DrawCenteredLabel(mission.Narrative.Chapter, 800, 145, 14, Cyan, 820);
             DrawCenteredLabel(
-                $"MISSION {MissionCatalog.IndexOf(_simulation.Mission.Id) + 1}  •  {_simulation.Mission.Title.ToUpperInvariant()}",
-                800, 178, 29, Colors.White, 700);
-            DrawCenteredLabel(_simulation.Mission.Subtitle, 800, 210, 16,
-                new Color("99d3e9"), 700);
-            DrawCenteredLabel(_simulation.Mission.Briefing, 800, 253, 14,
-                new Color("dce7ee"), 750);
+                $"MISSION {MissionCatalog.IndexOf(mission.Id) + 1}  •  {mission.Title.ToUpperInvariant()}",
+                800, 185, 30, Colors.White, 820);
+            DrawCenteredLabel(mission.Subtitle, 800, 216, 15, new Color("99d3e9"), 820);
+            DrawCenteredLabel(mission.Narrative.Speaker, 800, 258, 12, new Color("ffd065"), 820);
+            DrawCenteredLabel(mission.Narrative.BriefingLines[0], 800, 286, 14,
+                new Color("dce7ee"), 860);
+            DrawCenteredLabel(mission.Narrative.BriefingLines[1], 800, 310, 14,
+                new Color("dce7ee"), 860);
+            DrawCenteredLabel($"OBJECTIVE  •  {mission.Objective.Title.ToUpperInvariant()}",
+                800, 350, 15, new Color("ffd065"), 820);
+            DrawCenteredLabel(
+                $"COMMAND {mission.Complexity.Rating}/3  •  {mission.Complexity.Tier}  •  " +
+                $"{mission.Complexity.SimultaneousThreatGroups} THREAT GROUPS",
+                800, 378, 13, Cyan, 820);
+            DrawCenteredLabel(mission.Complexity.TacticalFocus, 800, 402, 12,
+                new Color("9fc5d6"), 860);
             var controls = new[]
             {
                 ($"1–4 / {BindingLabel(GameActionIds.SwitchShip)}", "Switch controlled ship"),
@@ -1697,23 +1724,18 @@ public sealed partial class Main : Node2D
                 (BindingLabel(GameActionIds.Fire), "Fire at nearest target"),
                 (BindingLabel(GameActionIds.Command), "Type a natural-language fleet order"),
                 (BindingLabel(GameActionIds.Ability), "Use the selected ship’s tactical ability"),
-                (BindingLabel(GameActionIds.Voice), "Local voice command adapter"),
-                ($"{BindingLabel(GameActionIds.Pause)} / {BindingLabel(GameActionIds.Help)} / " +
-                 BindingLabel(GameActionIds.Restart), "Pause, help, restart"),
-                (BindingLabel(GameActionIds.Missions), "Open mission selection"),
-                ("L", "Open local AI setup"),
-                ("F10 / PAD BACK", "Settings and accessibility")
+                (BindingLabel(GameActionIds.Voice), "Local voice command adapter")
             };
-            var y = 315;
+            var y = 455;
             foreach (var (key, description) in controls)
             {
                 DrawLabel(key, new(490, y), 14, Cyan);
                 DrawLabel(description, new(700, y), 15, new Color("dce7ee"));
                 y += 34;
             }
-            DrawCenteredLabel($"Try: “{_simulation.Mission.RecommendedOrder}”", 800, 675, 14,
+            DrawCenteredLabel($"Suggested opening: “{mission.RecommendedOrder}”", 800, 690, 14,
                 new Color("ffd065"), 700);
-            DrawCenteredLabel($"Press {BindingLabel(GameActionIds.Help)} to enter the battle", 800, 724, 13,
+            DrawCenteredLabel($"Press {BindingLabel(GameActionIds.Help)} to enter the battle", 800, 756, 13,
                 new Color("87b5ca"), 700);
         }
         else if (_paused && _simulation.Status == BattleStatus.Active)
@@ -1738,15 +1760,16 @@ public sealed partial class Main : Node2D
             var next = index + 1 < MissionCatalog.All.Count
                 ? $"Press {nextKey} for the next mission • {restart} to replay • {missions} for mission select"
                 : $"Campaign demo complete • {restart} to replay • {missions} for mission select";
-            DrawBanner("VICTORY", next, new Color("48eba9"));
+            DrawStoryOutcome("VICTORY", _simulation.Mission.Narrative.VictoryLines,
+                next, new Color("48eba9"));
         }
         else if (_simulation.Status == BattleStatus.EnemyVictory)
         {
             var restart = _lastInputWasController
                 ? GamepadButtonLabel(GamepadActionIds.Restart)
                 : BindingLabel(GameActionIds.Restart);
-            DrawBanner("MISSION FAILED",
-                $"A protected ship was lost • Press {restart} to try again", Red);
+            DrawStoryOutcome("MISSION FAILED", _simulation.Mission.Narrative.FailureLines,
+                $"Press {restart} to regroup and try again", Red);
         }
     }
 
@@ -1754,12 +1777,14 @@ public sealed partial class Main : Node2D
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.84f));
         DrawPanel(new(270, 135, 1060, 630));
+        DrawCenteredLabel(_simulation.Mission.Narrative.Chapter, 800, 174, 13, Cyan, 900);
         DrawCenteredLabel("CAPTAIN'S DRILL", 800, 205, 38, Colors.White, 900);
         DrawCenteredLabel("Four actions. About sixty seconds. Learn by commanding.", 800, 242, 16,
             Cyan, 900);
-        DrawCenteredLabel(
-            "Raiders have trapped a civilian convoy. Master the fleet, then disable their leader.",
-            800, 282, 14, new Color("c9dce6"), 920);
+        DrawCenteredLabel(_simulation.Mission.Narrative.BriefingLines[0],
+            800, 278, 13, new Color("c9dce6"), 920);
+        DrawCenteredLabel(_simulation.Mission.Narrative.BriefingLines[1],
+            800, 300, 13, new Color("c9dce6"), 920);
 
         for (var index = 0; index < TutorialTracker.Steps.Count; index++)
         {
@@ -1768,11 +1793,11 @@ public sealed partial class Main : Node2D
             var active = index == _tutorial.CompletedSteps;
             var x = 332 + index * 238;
             var color = completed ? new Color("48eba9") : active ? new Color("ffd065") : Cyan;
-            DrawPanel(new(x, 335, 214, 230));
-            DrawCircle(new(x + 107, 382), 23, new(color, 0.2f));
-            DrawArc(new(x + 107, 382), 23, 0, Mathf.Tau, 36, color, 2);
-            DrawCenteredLabel(completed ? "✓" : $"{index + 1}", x + 107, 390, 18, color, 30);
-            DrawCenteredLabel(step.Title.ToUpperInvariant(), x + 107, 435, 15, Colors.White, 190);
+            DrawPanel(new(x, 350, 214, 230));
+            DrawCircle(new(x + 107, 397), 23, new(color, 0.2f));
+            DrawArc(new(x + 107, 397), 23, 0, Mathf.Tau, 36, color, 2);
+            DrawCenteredLabel(completed ? "✓" : $"{index + 1}", x + 107, 405, 18, color, 30);
+            DrawCenteredLabel(step.Title.ToUpperInvariant(), x + 107, 450, 15, Colors.White, 190);
             DrawCenteredLabel(step.Action switch
             {
                 TutorialAction.SwitchShip =>
@@ -1784,11 +1809,11 @@ public sealed partial class Main : Node2D
                     $"{BindingLabel(GameActionIds.Command)}  /  {GamepadButtonLabel(GamepadActionIds.Voice)}",
                 _ =>
                     $"{BindingLabel(GameActionIds.Ability)}  /  {GamepadButtonLabel(GamepadActionIds.Ability)}"
-            }, x + 107, 475, 14, color, 190);
-            DrawCenteredLabel(step.Purpose, x + 107, 523, 12, new Color("9fc5d6"), 190);
+            }, x + 107, 490, 14, color, 190);
+            DrawCenteredLabel(step.Purpose, x + 107, 538, 12, new Color("9fc5d6"), 190);
         }
 
-        DrawCenteredLabel($"Objective after training: {_simulation.Mission.Objective.Title}", 800, 628, 16,
+        DrawCenteredLabel($"Objective after training: {_simulation.Mission.Objective.Title}", 800, 638, 16,
             new Color("ffd065"), 900);
         DrawCenteredLabel(_lastInputWasController ? "Press A or START to deploy" :
                 $"Press {BindingLabel(GameActionIds.Help)} to deploy",
@@ -1843,8 +1868,8 @@ public sealed partial class Main : Node2D
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.82f));
         DrawPanel(new(390, 130, 820, 620));
-        DrawCenteredLabel("CAMPAIGN MISSIONS", 800, 198, 34, Colors.White, 700);
-        DrawCenteredLabel("Three escalating fleet-command engagements", 800, 230, 15,
+        DrawCenteredLabel("THE BLACK SUN INCIDENT", 800, 198, 34, Colors.White, 700);
+        DrawCenteredLabel("A three-chapter Andromeda Fleet Command story", 800, 230, 15,
             new Color("99d3e9"), 700);
 
         for (var index = 0; index < MissionCatalog.All.Count; index++)
@@ -1857,9 +1882,12 @@ public sealed partial class Main : Node2D
             DrawLabel($"{index + 1}", new(485, y + 10), 28, unlocked ? Cyan : new Color("566a73"));
             DrawLabel(mission.Title.ToUpperInvariant(), new(545, y - 1), 19,
                 unlocked ? Colors.White : new Color("687983"));
+            DrawLabel($"COMMAND {mission.Complexity.Rating}/3  •  {mission.Complexity.Tier}",
+                new(875, y - 1), 12, unlocked ? new Color("ffd065") : new Color("66727a"),
+                HorizontalAlignment.Right, 235);
             DrawLabel(unlocked ? mission.Subtitle : "LOCKED — complete the previous mission",
                 new(545, y + 25), 13, unlocked ? new Color("9bc9dc") : new Color("66727a"));
-            if (completed) DrawLabel("COMPLETE", new(1010, y + 12), 13, new Color("48eba9"));
+            if (completed) DrawLabel("COMPLETE", new(1025, y + 25), 12, new Color("48eba9"));
         }
 
         DrawCenteredLabel($"Press 1–3 to deploy • {BindingLabel(GameActionIds.Missions)} or Esc to close",
@@ -1997,6 +2025,23 @@ public sealed partial class Main : Node2D
         DrawLabel(detail, new(505, y + 22), 13, new Color("9bc9dc"));
         DrawLabel(ready ? "READY" : "SETUP", new(1070, y + 8), 12,
             ready ? new Color("48eba9") : new Color("ffb047"), HorizontalAlignment.Center, 70);
+    }
+
+    private void DrawStoryOutcome(string title, IReadOnlyList<string> storyLines, string instruction, Color color)
+    {
+        var mission = _simulation.Mission;
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.82f));
+        DrawPanel(new(280, 155, 1040, 590));
+        DrawCenteredLabel(title, 800, 250, 52, color, 900);
+        DrawCenteredLabel(mission.Narrative.Chapter, 800, 292, 14, Cyan, 900);
+        DrawCenteredLabel(mission.Narrative.Speaker, 800, 334, 12, new Color("ffd065"), 900);
+        DrawCenteredLabel(storyLines[0], 800, 378, 16, Colors.White, 940);
+        DrawCenteredLabel(storyLines[1], 800, 410, 16, Colors.White, 940);
+        DrawCenteredLabel($"OBJECTIVE  •  {mission.Objective.Title.ToUpperInvariant()}",
+            800, 475, 14, color, 900);
+        DrawCenteredLabel(mission.Complexity.TacticalFocus, 800, 508, 13,
+            new Color("9fc5d6"), 900);
+        DrawCenteredLabel(instruction, 800, 675, 13, new Color("87b5ca"), 1000);
     }
 
     private void DrawBanner(string title, string subtitle, Color color)
