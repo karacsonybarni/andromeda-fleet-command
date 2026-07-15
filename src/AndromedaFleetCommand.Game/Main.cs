@@ -283,6 +283,13 @@ public sealed partial class Main : Node2D
     private void CaptureVisualQaFrame(string name)
     {
         var image = GetViewport().GetTexture().GetImage();
+        if (image is null)
+        {
+            _visualQa = false;
+            GD.PushError($"Visual QA capture {name} has no active renderer");
+            GetTree().Quit(1);
+            return;
+        }
         if (image.IsEmpty() || image.GetWidth() < 1280 || image.GetHeight() < 720)
             throw new InvalidOperationException($"Visual QA capture {name} has no full-size rendered frame");
 

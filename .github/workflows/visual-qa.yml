@@ -44,8 +44,10 @@ jobs:
           dotnet build AndromedaFleetCommand.Game.csproj --configuration Debug
           mkdir -p visual-qa
           log="$(mktemp)"
-          HOME="$(mktemp -d)" AFC_VISUAL_QA_DIR="$PWD/visual-qa" \
-            timeout 45s "$GODOT_EDITOR" --headless --path . -- --visual-qa 2>&1 | tee "$log"
+          command -v xvfb-run
+          HOME="$(mktemp -d)" AFC_VISUAL_QA_DIR="$PWD/visual-qa" LIBGL_ALWAYS_SOFTWARE=1 \
+            timeout 45s xvfb-run --auto-servernum --server-args="-screen 0 1600x900x24 -ac" \
+            "$GODOT_EDITOR" --path . -- --visual-qa 2>&1 | tee "$log"
           grep -q "AFC_VISUAL_QA_PASS captures=7" "$log"
           test "$(find visual-qa -type f -name '*.png' | wc -l)" -eq 7
       - uses: actions/upload-artifact@v4
