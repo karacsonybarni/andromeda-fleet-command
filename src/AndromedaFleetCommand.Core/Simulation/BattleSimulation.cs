@@ -191,9 +191,13 @@ public sealed class BattleSimulation
         SelectPlayerShip(current + 1);
     }
 
-    public void AddOrderEvent(string message) =>
-        _events.Add(new(CombatEventType.Order,
-            _ships.Count == 0 ? Vector2D.Zero : SelectedShip.Position, message, 4.5));
+    public void AddOrderEvent(string message)
+    {
+        var anchor = _ships.FirstOrDefault(ship => ship.IsAlive && ship.Team == Team.Player) ??
+                     _ships.FirstOrDefault(ship => ship.Team == Team.Player) ??
+                     _ships.FirstOrDefault();
+        _events.Add(new(CombatEventType.Order, anchor?.Position ?? Vector2D.Zero, message, 4.5));
+    }
 
     public double FleetStrength(Team team) =>
         _ships.Where(ship => ship.Team == team && ship.IsAlive)
