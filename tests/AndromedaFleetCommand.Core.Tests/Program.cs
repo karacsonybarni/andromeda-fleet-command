@@ -258,12 +258,7 @@ static void EveryCampaignMissionIsWinnable()
         var combatOrders = mission.Id switch
         {
             MissionId.FirstCommand => new[] { "All ships, attack the raider leader" },
-            MissionId.BrokenShield =>
-            [
-                "Carrier One, retreat",
-                "Frigate Two, intercept the bomber wing",
-                "Destroyer Three, attack the bomber wing"
-            ],
+            MissionId.BrokenShield => new[] { "All ships, attack the nearest bomber" },
             _ =>
             [
                 "Flagship, retreat",
@@ -272,7 +267,12 @@ static void EveryCampaignMissionIsWinnable()
             ]
         };
         foreach (var order in combatOrders) DispatchOrder(order);
-        if (mission.Id == MissionId.BlackSun)
+        if (mission.Id == MissionId.BrokenShield)
+        {
+            simulation.SelectPlayerShip(1);
+            shipSwitches++;
+        }
+        else if (mission.Id == MissionId.BlackSun)
         {
             simulation.SelectPlayerShip(3);
             shipSwitches++;
@@ -290,7 +290,9 @@ static void EveryCampaignMissionIsWinnable()
                 abilities++;
             }
 
-            simulation.SetManualInput(PlayerInputForObjective(simulation));
+            simulation.SetManualInput(mission.Id == MissionId.BrokenShield
+                ? PlayerInputForCarrierEvasion(simulation)
+                : PlayerInputForObjective(simulation));
             simulation.Update(BattleSimulation.FixedStep);
         }
         missionWallClock.Stop();
@@ -357,6 +359,23 @@ static ManualInput PlayerInputForObjective(BattleSimulation simulation)
         TurnLeft: angleDifference < -0.04,
         TurnRight: angleDifference > 0.04,
         Fire: Math.Abs(angleDifference) < 0.55);
+}
+
+static ManualInput PlayerInputForCarrierEvasion(BattleSimulation simulation)
+{
+    var carrier = simulation.SelectedShip;
+    var destination = new Vector2D(90,
+        (int)(simulation.ElapsedSeconds / 7) % 2 == 0 ? 760 : 140);
+    var difference = destination - carrier.Position;
+    var angleDifference = difference.Angle - carrier.Angle;
+    while (angleDifference > Math.PI) angleDifference -= Math.PI * 2;
+    while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
+    return new(
+        Thrust: difference.Length > 55,
+        Reverse: false,
+        TurnLeft: angleDifference < -0.04,
+        TurnRight: angleDifference > 0.04,
+        Fire: true);
 }
 
 static void CampaignProgressionUnlocksMissions()
