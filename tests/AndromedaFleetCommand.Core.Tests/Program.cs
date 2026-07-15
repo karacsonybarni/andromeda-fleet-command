@@ -259,22 +259,12 @@ static void EveryCampaignMissionIsWinnable()
         {
             MissionId.FirstCommand => new[] { "All ships, attack the raider leader" },
             MissionId.BrokenShield => new[] { "All ships, attack the nearest bomber" },
-            _ =>
-            [
-                "Flagship, retreat",
-                "Carrier One, attack the enemy flagship",
-                "Frigate Two, attack the enemy flagship"
-            ]
+            _ => new[] { "All ships, attack the enemy flagship" }
         };
         foreach (var order in combatOrders) DispatchOrder(order);
         if (mission.Id == MissionId.BrokenShield)
         {
             simulation.SelectPlayerShip(1);
-            shipSwitches++;
-        }
-        else if (mission.Id == MissionId.BlackSun)
-        {
-            simulation.SelectPlayerShip(3);
             shipSwitches++;
         }
 
@@ -287,11 +277,11 @@ static void EveryCampaignMissionIsWinnable()
             if (simulation.SelectedShip.AbilityCooldown <= 0)
             {
                 simulation.TryActivateSelectedAbility();
-                abilities++;
+                if (simulation.SelectedShip.AbilityCooldown > 0) abilities++;
             }
 
-            simulation.SetManualInput(mission.Id == MissionId.BrokenShield
-                ? PlayerInputForCarrierEvasion(simulation)
+            simulation.SetManualInput(mission.Id is MissionId.BrokenShield or MissionId.BlackSun
+                ? PlayerInputForProtectedShipEvasion(simulation)
                 : PlayerInputForObjective(simulation));
             simulation.Update(BattleSimulation.FixedStep);
         }
@@ -361,7 +351,7 @@ static ManualInput PlayerInputForObjective(BattleSimulation simulation)
         Fire: Math.Abs(angleDifference) < 0.55);
 }
 
-static ManualInput PlayerInputForCarrierEvasion(BattleSimulation simulation)
+static ManualInput PlayerInputForProtectedShipEvasion(BattleSimulation simulation)
 {
     var carrier = simulation.SelectedShip;
     var destination = new Vector2D(90,
