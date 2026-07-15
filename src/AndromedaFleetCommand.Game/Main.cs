@@ -1945,16 +1945,19 @@ public sealed partial class Main : Node2D
             ? GamepadActions.All.Select(action => (action.Id, action.Label)).ToArray()
             : GameActions.All.Select(action => (action.Id, action.Label)).ToArray();
         var rowsPerColumn = _bindingDeviceGamepad ? 4 : 7;
+        var rowSpacing = _bindingDeviceGamepad ? 86 : 64;
+        var firstRowY = _bindingDeviceGamepad ? 250 : 235;
         for (var index = 0; index < actions.Length; index++)
         {
             var action = actions[index];
             var column = index / rowsPerColumn;
             var row = index % rowsPerColumn;
             var x = 315 + column * 500;
-            var y = 250 + row * 86;
+            var y = firstRowY + row * rowSpacing;
             var selected = index == _bindingSelection;
             if (selected)
-                DrawRect(new(x - 16, y - 36, 455, 62), new Color(0.12f, 0.58f, 0.72f, 0.2f));
+                DrawRect(new(x - 16, y - (_bindingDeviceGamepad ? 36 : 29), 455,
+                    _bindingDeviceGamepad ? 62 : 48), new Color(0.12f, 0.58f, 0.72f, 0.2f));
             DrawLabel(action.Label.ToUpperInvariant(), new(x, y), 14,
                 selected ? Colors.White : new Color("b8d5e2"));
             var binding = _bindingDeviceGamepad
