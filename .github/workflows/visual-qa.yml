@@ -48,8 +48,8 @@ jobs:
           HOME="$(mktemp -d)" AFC_VISUAL_QA_DIR="$PWD/visual-qa" LIBGL_ALWAYS_SOFTWARE=1 \
             timeout 45s xvfb-run --auto-servernum --server-args="-screen 0 1600x900x24 -ac" \
             "$GODOT_EDITOR" --path . -- --visual-qa 2>&1 | tee "$log"
-          grep -q "AFC_VISUAL_QA_PASS captures=9" "$log"
-          test "$(find visual-qa -type f -name '*.png' | wc -l)" -eq 9
+          grep -q "AFC_VISUAL_QA_PASS captures=10" "$log"
+          test "$(find visual-qa -type f -name '*.png' | wc -l)" -eq 10
       - uses: actions/upload-artifact@v4
         with:
           name: visual-qa-${{ github.event.pull_request.head.sha }}
