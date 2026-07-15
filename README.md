@@ -49,7 +49,9 @@ Ollama model and whisper.cpp.
 - **C++ only where justified later** — llama.cpp, whisper.cpp, or measured
   GDExtension performance hotspots
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the rationale.
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the boundaries and the
+[engine decision record](docs/ENGINE_DECISION.md) for the contributor-focused
+comparison with Unity and Unreal.
 
 ## Play
 
@@ -169,6 +171,11 @@ adapter, packaging workflow, and owner-only release inputs.
 
 PRs are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md) and the
 [roadmap](docs/ROADMAP.md). The project is MIT-licensed.
+
+You do not need a Steam App ID, Ollama, whisper.cpp setup, or a commercial game
+engine license to contribute. The pure .NET simulation tests run without the
+Godot editor, and contribution paths include code, missions, balance,
+accessibility, UI, art, audio, writing, documentation, and QA.
 
 > Images under art/concept are AI-generated design concepts, not captured
 > in-engine footage. Keep that disclosure wherever these images are published.
