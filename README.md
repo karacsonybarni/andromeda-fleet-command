@@ -6,11 +6,24 @@ Andromeda Fleet Command is an open-source desktop fleet-combat game intended
 for Steam. Fly any vessel directly, switch ships instantly, or give
 natural-language orders to deterministic AI pilots.
 
-![AI-generated battle gameplay concept](art/concept/battle-gameplay-concept.png)
+![In-engine fleet battle during Mission 3: Black Sun](art/screenshots/fleet-battle.png)
+
+*Mission 3: Black Sun — four allied ships coordinating an attack on the enemy
+flagship. Raw in-engine capture from the current Godot build.*
 
 The runtime is local-first. The trusted offline command parser, simulation, and
 ship pilots need no hosted service. Optional integrations can use a local
 Ollama model and whisper.cpp.
+
+## Gameplay screenshots
+
+Every image below is an unedited in-engine capture from the current playable
+build. No AI-generated artwork or promotional mock-up is used in this README.
+
+| Captain's Drill | Campaign progression |
+| --- | --- |
+| ![In-engine Captain's Drill teaching ship switching during live combat](art/screenshots/captains-drill.png) | ![In-engine Black Sun Incident mission selector](art/screenshots/campaign-missions.png) |
+| Learn ship switching, direct control, fleet commands, and abilities while the battle is running. | Three connected missions unlock in order and escalate from orientation to fleet coordination. |
 
 ## Current playable campaign demo
 
@@ -176,6 +189,3 @@ You do not need a Steam App ID, Ollama, whisper.cpp setup, or a commercial game
 engine license to contribute. The pure .NET simulation tests run without the
 Godot editor, and contribution paths include code, missions, balance,
 accessibility, UI, art, audio, writing, documentation, and QA.
-
-> Images under art/concept are AI-generated design concepts, not captured
-> in-engine footage. Keep that disclosure wherever these images are published.
