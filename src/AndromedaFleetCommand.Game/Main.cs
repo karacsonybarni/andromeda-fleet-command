@@ -86,11 +86,17 @@ public sealed partial class Main : Node2D
     private double _visualTime;
     private double _combatKick;
     private Vector2 _worldDrawOffset;
+    private bool _visualQa;
+    private int _visualQaStage;
+    private int _visualQaFrames;
+    private string _visualQaDirectory = string.Empty;
+    private readonly List<string> _visualQaCaptures = [];
 
     public override void _Ready()
     {
         var commandArguments = OS.GetCmdlineUserArgs();
         _smokeTest = commandArguments.Contains("--smoke-test", StringComparer.Ordinal);
+        _visualQa = commandArguments.Contains("--visual-qa", StringComparer.Ordinal);
         var benchmarkMode = commandArguments.Contains("--benchmark", StringComparer.Ordinal);
         _settingsStore = new(ProjectSettings.GlobalizePath("user://settings.json"));
         _settings = _settingsStore.Load();
@@ -107,7 +113,7 @@ public sealed partial class Main : Node2D
         _localAiSetup = new();
         RebuildLocalAiAdapters();
         _audio = new(this);
-        if (!_smokeTest && !benchmarkMode) _audio.StartAmbient();
+        if (!_smokeTest && !_visualQa && !benchmarkMode) _audio.StartAmbient();
         _platform = PlatformServicesFactory.Create();
         _progressStore = new(ProjectSettings.GlobalizePath("user://campaign-progress.json"));
         _progress = _progressStore.Load();
@@ -128,6 +134,15 @@ public sealed partial class Main : Node2D
             _showHelp = false;
             var command = _rules.Parse("All ships, attack the nearest enemy").Command!;
             _dispatcher.Dispatch(command, _simulation);
+        }
+        if (_visualQa)
+        {
+            _visualQaDirectory = Environment.GetEnvironmentVariable("AFC_VISUAL_QA_DIR") ??
+                                 ProjectSettings.GlobalizePath("user://visual-qa");
+            Directory.CreateDirectory(_visualQaDirectory);
+            _showHelp = true;
+            _status = string.Empty;
+            _statusTime = 0;
         }
         GetViewport().SizeChanged += QueueRedraw;
         QueueRedraw();
@@ -197,6 +212,7 @@ public sealed partial class Main : Node2D
             _accumulator = 0;
         }
         QueueRedraw();
+        if (_visualQa) AdvanceVisualQa();
         if (_smokeTest && _simulation.ElapsedSeconds >= 2)
         {
             var finite = _simulation.Ships.All(ship => ship.Position.IsFinite && ship.Velocity.IsFinite);
@@ -205,6 +221,84 @@ public sealed partial class Main : Node2D
             _smokeTest = false;
             GetTree().Quit();
         }
+    }
+
+    private void AdvanceVisualQa()
+    {
+        _visualQaFrames++;
+        if (_visualQaFrames < 10) return;
+
+        switch (_visualQaStage)
+        {
+            case 0:
+                CaptureVisualQaFrame("01-tutorial-briefing");
+                _showHelp = false;
+                _dispatcher.Dispatch(_rules.Parse("All ships, attack the nearest enemy").Command!, _simulation);
+                NextVisualQaStage();
+                break;
+            case 1 when _simulation.ElapsedSeconds >= 2:
+                CaptureVisualQaFrame("02-live-combat");
+                _paused = true;
+                NextVisualQaStage();
+                break;
+            case 2:
+                CaptureVisualQaFrame("03-pause");
+                _paused = false;
+                _showSettings = true;
+                NextVisualQaStage();
+                break;
+            case 3:
+                CaptureVisualQaFrame("04-settings");
+                _showSettings = false;
+                _showBindings = true;
+                _bindingDeviceGamepad = false;
+                NextVisualQaStage();
+                break;
+            case 4:
+                CaptureVisualQaFrame("05-keyboard-bindings");
+                _bindingDeviceGamepad = true;
+                NextVisualQaStage();
+                break;
+            case 5:
+                CaptureVisualQaFrame("06-controller-bindings");
+                _showBindings = false;
+                _showMissionSelect = true;
+                NextVisualQaStage();
+                break;
+            case 6:
+                CaptureVisualQaFrame("07-mission-select");
+                GD.Print($"AFC_VISUAL_QA_PASS captures={_visualQaCaptures.Count} directory={_visualQaDirectory}");
+                _visualQa = false;
+                GetTree().Quit();
+                break;
+        }
+    }
+
+    private void NextVisualQaStage()
+    {
+        _visualQaStage++;
+        _visualQaFrames = 0;
+    }
+
+    private void CaptureVisualQaFrame(string name)
+    {
+        var image = GetViewport().GetTexture().GetImage();
+        if (image.IsEmpty() || image.GetWidth() < 1280 || image.GetHeight() < 720)
+            throw new InvalidOperationException($"Visual QA capture {name} has no full-size rendered frame");
+
+        var sampledColors = new HashSet<uint>();
+        for (var y = 0; y < image.GetHeight(); y += Math.Max(1, image.GetHeight() / 18))
+        for (var x = 0; x < image.GetWidth(); x += Math.Max(1, image.GetWidth() / 24))
+            sampledColors.Add(image.GetPixel(x, y).ToRgba32());
+        if (sampledColors.Count < 8)
+            throw new InvalidOperationException($"Visual QA capture {name} appears blank");
+
+        var path = Path.Combine(_visualQaDirectory, name + ".png");
+        var result = image.SavePng(path);
+        if (result != Error.Ok)
+            throw new IOException($"Could not save visual QA capture {path}: {result}");
+        _visualQaCaptures.Add(path);
+        GD.Print($"AFC_VISUAL_QA_CAPTURE name={name} colors={sampledColors.Count}");
     }
 
     public override void _UnhandledInput(InputEvent inputEvent)
