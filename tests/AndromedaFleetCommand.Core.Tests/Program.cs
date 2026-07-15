@@ -233,6 +233,7 @@ static void EveryCampaignMissionIsWinnable()
         var mission = MissionCatalog.All[missionIndex];
         True(progress.IsUnlocked(missionIndex), $"{mission.Title} is unlocked before deployment");
         var simulation = new BattleSimulation(mission.Id);
+        var missionWallClock = System.Diagnostics.Stopwatch.StartNew();
         var tutorial = new TutorialTracker();
         var orders = 0;
         var abilities = 0;
@@ -254,24 +255,35 @@ static void EveryCampaignMissionIsWinnable()
             True(tutorial.IsComplete, "Captain's Drill completes before the first battle ends");
         }
 
-        var focusOrder = mission.Id switch
+        var combatOrders = mission.Id switch
         {
-            MissionId.FirstCommand => "All ships, attack the raider leader",
-            MissionId.BrokenShield => "All ships, attack the nearest bomber",
-            _ => "All ships, attack the enemy flagship"
+            MissionId.FirstCommand => new[] { "All ships, attack the raider leader" },
+            MissionId.BrokenShield =>
+            [
+                "Carrier One, retreat",
+                "Frigate Two, intercept the bomber wing",
+                "Destroyer Three, attack the bomber wing"
+            ],
+            _ =>
+            [
+                "Flagship, retreat",
+                "Carrier One, attack the enemy flagship",
+                "Frigate Two, attack the enemy flagship"
+            ]
         };
-        DispatchOrder(focusOrder);
+        foreach (var order in combatOrders) DispatchOrder(order);
+        if (mission.Id == MissionId.BlackSun)
+        {
+            simulation.SelectPlayerShip(3);
+            shipSwitches++;
+        }
 
         const int maximumTicks = 60 * 240;
         for (var tick = 0; tick < maximumTicks && simulation.Status == BattleStatus.Active; tick++)
         {
             if (tick > 0 && tick % (60 * 12) == 0)
-                DispatchOrder(focusOrder);
-            if (tick > 0 && tick % (60 * 18) == 0)
-            {
-                simulation.CycleSelectedShip();
-                shipSwitches++;
-            }
+                foreach (var order in combatOrders.Skip(mission.Id == MissionId.FirstCommand ? 0 : 1))
+                    DispatchOrder(order);
             if (simulation.SelectedShip.AbilityCooldown <= 0)
             {
                 simulation.TryActivateSelectedAbility();
@@ -281,12 +293,22 @@ static void EveryCampaignMissionIsWinnable()
             simulation.SetManualInput(PlayerInputForObjective(simulation));
             simulation.Update(BattleSimulation.FixedStep);
         }
+        missionWallClock.Stop();
 
         foreach (var ship in simulation.Ships)
         {
             True(ship.Position.IsFinite && ship.Velocity.IsFinite, $"{mission.Title} remains finite");
             True(ship.Hull >= 0 && ship.Shield >= 0, $"{mission.Title} damage remains bounded");
         }
+        var protectedShip = simulation.Mission.Objective.ProtectedShipId is null
+            ? null
+            : simulation.FindShip(simulation.Mission.Objective.ProtectedShipId);
+        Console.WriteLine($"PLAY  mission={mission.Title} outcome={simulation.Status} " +
+                          $"simulated={simulation.ElapsedSeconds:F1}s wall={missionWallClock.Elapsed.TotalMilliseconds:F0}ms " +
+                          $"objective={simulation.ObjectiveProgress.Label.Replace(' ', '_')} " +
+                          $"protected_hull={(protectedShip?.HullRatio * 100 ?? 100):F0}% " +
+                          $"orders={orders} switches={shipSwitches} abilities={abilities} " +
+                          $"player_survivors={simulation.PlayerFleet.Count}");
         Equal(BattleStatus.PlayerVictory, simulation.Status,
             $"{mission.Title} can be won with normal controls and parsed orders");
         True(simulation.ElapsedSeconds is > 2 and <= 240,
@@ -295,10 +317,6 @@ static void EveryCampaignMissionIsWinnable()
              simulation.FindShip(simulation.Mission.Objective.ProtectedShipId)?.IsAlive == true,
             $"{mission.Title} protected ship survives");
         progress = progress.Complete(mission.Id);
-        Console.WriteLine($"PLAY  mission={mission.Title} outcome={simulation.Status} " +
-                          $"simulated={simulation.ElapsedSeconds:F1}s orders={orders} " +
-                          $"switches={shipSwitches} abilities={abilities} " +
-                          $"player_survivors={simulation.PlayerFleet.Count}");
 
         void DispatchOrder(string text)
         {
