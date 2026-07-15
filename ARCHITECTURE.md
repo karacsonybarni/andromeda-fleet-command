@@ -4,16 +4,18 @@
 
 The project uses **Godot 4.7 .NET and C#**.
 
-C# ranks among GitHub’s most-used languages and has a large game-development
-community. It gives contributors a familiar, typed, compiled language without
-requiring everyone to manage native toolchains. Godot is MIT-licensed, has no
-royalty or account requirement, and exports directly to Steam’s desktop
-targets.
+C# gives contributors a familiar, typed, compiled language without requiring
+everyone to manage native toolchains. Godot is MIT-licensed, has no royalty or
+account requirement, and exports directly to Steam’s desktop targets.
 
 Godot’s engine is C++. Performance-sensitive native libraries can be integrated
 through GDExtension, but this project will not introduce C++ until profiling
 identifies a real bottleneck. A single-language gameplay codebase is easier to
 contribute to and maintain.
+
+See [the engine decision record](docs/ENGINE_DECISION.md) for the comparison
+with Unity and Unreal, contributor-focused criteria, and reconsideration
+triggers.
 
 ## Boundaries
 
