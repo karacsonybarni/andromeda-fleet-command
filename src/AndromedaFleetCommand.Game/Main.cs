@@ -90,6 +90,7 @@ public sealed partial class Main : Node2D
     private string _lastIssuedCommand = "Fleet standing by";
     private string _lastAcknowledgement = "Awaiting tactical order";
     private bool _visualQa;
+    private bool _visualQaFreeze;
     private int _visualQaStage;
     private int _visualQaFrames;
     private string _visualQaDirectory = string.Empty;
@@ -177,7 +178,7 @@ public sealed partial class Main : Node2D
             if (_statusTime <= 0) _status = string.Empty;
         }
 
-        if (!_paused && !_showHelp && !_commandMode && !_showSettings && !_showBindings &&
+        if (!_paused && !_visualQaFreeze && !_showHelp && !_commandMode && !_showSettings && !_showBindings &&
             !_showMissionSelect && !_showLocalAiSetup && _simulation.Status == BattleStatus.Active)
         {
             _accumulator += Math.Min(delta, 0.2);
@@ -295,6 +296,10 @@ public sealed partial class Main : Node2D
                 NextVisualQaStage();
                 break;
             case 9 when _simulation.ElapsedSeconds >= 8:
+                _visualQaFreeze = true;
+                NextVisualQaStage();
+                break;
+            case 10:
                 CaptureVisualQaFrame("10-fleet-battle");
                 GD.Print($"AFC_VISUAL_QA_PASS captures={_visualQaCaptures.Count} directory={_visualQaDirectory}");
                 _visualQa = false;
