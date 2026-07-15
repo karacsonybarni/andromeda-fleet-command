@@ -493,7 +493,7 @@ public sealed partial class Main : Node2D
         foreach (var ship in _simulation.Ships.Where(ship => ship.IsAlive)) DrawShip(ship);
         DrawTargetingOverlay();
         foreach (var combatEvent in _simulation.Events.Where(item => item.Type != CombatEventType.Order &&
-                     (!_settings.ReduceFlashes || item.Type != CombatEventType.MuzzleFlash)))
+                     (!_settings.ReduceFlashes || item.Type != CombatEventType.MuzzleFlash)).TakeLast(14))
             DrawCombatEvent(combatEvent);
         DrawSetTransform(Vector2.Zero, 0);
         DrawHud();
@@ -1364,19 +1364,19 @@ public sealed partial class Main : Node2D
 
     private void DrawNebulaCloud(Vector2 center, float radius, Color color)
     {
-        for (var layer = 6; layer >= 1; layer--)
+        for (var layer = 4; layer >= 1; layer--)
         {
             var phase = (float)_visualTime * 0.012f + layer * 1.73f;
             var offset = new Vector2(Mathf.Cos(phase) * radius * 0.09f,
                 Mathf.Sin(phase * 1.31f) * radius * 0.07f);
             var layerColor = new Color(color, color.A * (0.25f + layer * 0.11f));
-            DrawCircle(center + offset, radius * (0.35f + layer * 0.105f), layerColor);
+            DrawCircle(center + offset, radius * (0.46f + layer * 0.135f), layerColor);
         }
     }
 
     private void DrawDistantFleet()
     {
-        for (var index = 0; index < 18; index++)
+        for (var index = 0; index < 12; index++)
         {
             var x = 390 + ((index * 137) % 1070);
             var y = 105 + ((index * 83) % 515);
@@ -1455,9 +1455,9 @@ public sealed partial class Main : Node2D
                 selected ? 18 : 14, selected ? 2.2f : 1.2f);
             var direction = (end - start).Normalized();
             var tangent = new Vector2(-direction.Y, direction.X);
-            for (var marker = 1; marker <= 3; marker++)
+            for (var marker = 1; marker <= 2; marker++)
             {
-                var center = start.Lerp(end, marker / 4f);
+                var center = start.Lerp(end, marker / 3f);
                 DrawLine(center - direction * 7 + tangent * 5, center, new Color(orderColor, 0.54f), 1.6f);
                 DrawLine(center - direction * 7 - tangent * 5, center, new Color(orderColor, 0.54f), 1.6f);
             }
@@ -2359,7 +2359,7 @@ public sealed partial class Main : Node2D
     private void CreateStars()
     {
         var random = new Random(0xAFC2026);
-        for (var index = 0; index < 330; index++)
+        for (var index = 0; index < 240; index++)
         {
             _stars.Add(new(new(random.Next(1600), random.Next(76, 880)),
                 0.7f + (float)random.NextDouble() * 2.3f,
