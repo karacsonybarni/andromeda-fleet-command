@@ -18,7 +18,7 @@ Ollama model and whisper.cpp.
 ## Gameplay screenshots
 
 Every image below is an unedited in-engine capture from the current playable
-build. No AI-generated artwork or promotional mock-up is used in this README.
+build.
 
 | Captain's Drill | Campaign progression |
 | --- | --- |
