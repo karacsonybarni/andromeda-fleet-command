@@ -483,6 +483,7 @@ public sealed partial class Main : Node2D
         DrawSetTransform(_worldDrawOffset, 0);
         DrawGrid();
         DrawOrderVisualizations();
+        DrawEnemyGroupLabels();
         foreach (var projectile in _simulation.Projectiles) DrawProjectile(projectile);
         foreach (var ship in _simulation.Ships.Where(ship => ship.IsAlive)) DrawShip(ship);
         DrawTargetingOverlay();
@@ -1462,6 +1463,25 @@ public sealed partial class Main : Node2D
         }
     }
 
+    private void DrawEnemyGroupLabels()
+    {
+        var groups = _simulation.Ships
+            .Where(ship => ship.IsAlive && ship.Team == Team.Enemy &&
+                           ship.Class is ShipClass.Bomber or ShipClass.Escort)
+            .GroupBy(ship => ship.Class)
+            .Where(group => group.Count() >= 2);
+        foreach (var group in groups)
+        {
+            var center = new Vector2((float)group.Average(ship => ship.Position.X),
+                (float)group.Average(ship => ship.Position.Y));
+            var title = group.Key == ShipClass.Bomber ? "BOMBER WING" : "ESCORT SCREEN";
+            DrawLine(center + new Vector2(-54, -14), center + new Vector2(54, -14),
+                new Color(Red, 0.24f), 1.2f, true);
+            DrawCenteredLabel($"{title}  •  {group.Count()}", center.X, center.Y - 24,
+                10, new Color(Red, 0.88f), 150);
+        }
+    }
+
     private void DrawProjectile(Projectile projectile)
     {
         var color = projectile.Team == Team.Player ? Cyan : Orange;
@@ -1559,11 +1579,21 @@ public sealed partial class Main : Node2D
                     new(teamColor, shieldAlpha), 3);
             }
         }
-        DrawCenteredLabel(ship.Name.ToUpperInvariant(), position.X,
-            position.Y - visualRadius - 20, 12, teamColor, 150);
-        DrawBar(new(position.X - 55, position.Y - visualRadius - 9), 110, 4,
-            (float)ship.HullRatio, teamColor);
+        if (ShouldDrawShipLabel(ship))
+        {
+            DrawCenteredLabel(ship.Name.ToUpperInvariant(), position.X,
+                position.Y - visualRadius - 20, 12, teamColor, 150);
+            DrawBar(new(position.X - 55, position.Y - visualRadius - 9), 110, 4,
+                (float)ship.HullRatio, teamColor);
+        }
     }
+
+    private bool ShouldDrawShipLabel(Ship ship) =>
+        ship.Team == Team.Player ||
+        ship.Class is ShipClass.Flagship or ShipClass.Carrier ||
+        ship.Id == _simulation.Mission.Objective.TargetId ||
+        ship.Id == _simulation.Mission.Objective.ProtectedShipId ||
+        ship.Id == _simulation.SelectedShip.Order.TargetId;
 
     private void DrawTargetingOverlay()
     {
