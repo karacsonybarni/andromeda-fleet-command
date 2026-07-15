@@ -41,6 +41,7 @@ jobs:
           dotnet run --project tests/AndromedaFleetCommand.Core.Tests
           dotnet build AndromedaFleetCommand.Game.csproj --configuration Release
           "$GODOT_EDITOR" --headless --editor --path . --quit-after 10
+          dotnet build AndromedaFleetCommand.Game.csproj --configuration Debug
           mkdir -p visual-qa
           log="$(mktemp)"
           HOME="$(mktemp -d)" AFC_VISUAL_QA_DIR="$PWD/visual-qa" \
