@@ -20,7 +20,7 @@ var tests = new (string Name, Action Body)[]
     ("Long battle maintains invariants", LongBattleMaintainsInvariants),
     ("Mission catalog is internally valid", MissionCatalogIsValid),
     ("Mission objectives determine victory and defeat", MissionObjectivesDetermineStatus),
-    ("Every campaign mission survives integration play", EveryMissionSurvivesIntegrationPlay),
+    ("Every campaign mission is winnable through representative play", EveryCampaignMissionIsWinnable),
     ("Campaign progression unlocks missions sequentially", CampaignProgressionUnlocksMissions),
     ("Campaign progress persists and recovers safely", CampaignProgressPersistsSafely),
     ("Tutorial advances only through intended actions", TutorialAdvancesInOrder),
@@ -223,24 +223,122 @@ static void MissionObjectivesDetermineStatus()
     Equal(BattleStatus.EnemyVictory, failed.Status, "Losing protected carrier fails mission");
 }
 
-static void EveryMissionSurvivesIntegrationPlay()
+static void EveryCampaignMissionIsWinnable()
 {
     var parser = new RuleBasedCommandInterpreter();
     var dispatcher = new CommandDispatcher();
-    foreach (var mission in MissionCatalog.All)
+    var progress = CampaignProgress.New;
+    for (var missionIndex = 0; missionIndex < MissionCatalog.All.Count; missionIndex++)
     {
+        var mission = MissionCatalog.All[missionIndex];
+        True(progress.IsUnlocked(missionIndex), $"{mission.Title} is unlocked before deployment");
         var simulation = new BattleSimulation(mission.Id);
-        var command = parser.Parse("All ships, attack the nearest enemy").Command!;
-        dispatcher.Dispatch(command, simulation);
-        for (var tick = 0; tick < 60 * 30 && simulation.Status == BattleStatus.Active; tick++)
+        var tutorial = new TutorialTracker();
+        var orders = 0;
+        var abilities = 0;
+        var shipSwitches = 0;
+
+        if (mission.Id == MissionId.FirstCommand)
+        {
+            simulation.CycleSelectedShip();
+            shipSwitches++;
+            True(tutorial.Notify(TutorialAction.SwitchShip), "Tutorial records a ship switch");
+            simulation.SetManualInput(new(true, false, true, false, true));
             simulation.Update(BattleSimulation.FixedStep);
+            True(tutorial.Notify(TutorialAction.ManualControl), "Tutorial records direct helm input");
+            DispatchOrder(mission.RecommendedOrder);
+            True(tutorial.Notify(TutorialAction.IssueOrder), "Tutorial records the recommended fleet order");
+            simulation.TryActivateSelectedAbility();
+            abilities++;
+            True(tutorial.Notify(TutorialAction.ActivateAbility), "Tutorial records tactical ability use");
+            True(tutorial.IsComplete, "Captain's Drill completes before the first battle ends");
+        }
+
+        var focusOrder = mission.Id switch
+        {
+            MissionId.FirstCommand => "All ships, attack the raider leader",
+            MissionId.BrokenShield => "All ships, attack the nearest bomber",
+            _ => "All ships, attack the enemy flagship"
+        };
+        DispatchOrder(focusOrder);
+
+        const int maximumTicks = 60 * 240;
+        for (var tick = 0; tick < maximumTicks && simulation.Status == BattleStatus.Active; tick++)
+        {
+            if (tick > 0 && tick % (60 * 12) == 0)
+                DispatchOrder(focusOrder);
+            if (tick > 0 && tick % (60 * 18) == 0)
+            {
+                simulation.CycleSelectedShip();
+                shipSwitches++;
+            }
+            if (simulation.SelectedShip.AbilityCooldown <= 0)
+            {
+                simulation.TryActivateSelectedAbility();
+                abilities++;
+            }
+
+            simulation.SetManualInput(PlayerInputForObjective(simulation));
+            simulation.Update(BattleSimulation.FixedStep);
+        }
+
         foreach (var ship in simulation.Ships)
         {
             True(ship.Position.IsFinite && ship.Velocity.IsFinite, $"{mission.Title} remains finite");
             True(ship.Hull >= 0 && ship.Shield >= 0, $"{mission.Title} damage remains bounded");
         }
-        True(simulation.ElapsedSeconds > 2, $"{mission.Title} advances under integration load");
+        Equal(BattleStatus.PlayerVictory, simulation.Status,
+            $"{mission.Title} can be won with normal controls and parsed orders");
+        True(simulation.ElapsedSeconds is > 2 and <= 240,
+            $"{mission.Title} completes within the four-minute QA limit");
+        True(simulation.Mission.Objective.ProtectedShipId is null ||
+             simulation.FindShip(simulation.Mission.Objective.ProtectedShipId)?.IsAlive == true,
+            $"{mission.Title} protected ship survives");
+        progress = progress.Complete(mission.Id);
+        Console.WriteLine($"PLAY  mission={mission.Title} outcome={simulation.Status} " +
+                          $"simulated={simulation.ElapsedSeconds:F1}s orders={orders} " +
+                          $"switches={shipSwitches} abilities={abilities} " +
+                          $"player_survivors={simulation.PlayerFleet.Count}");
+
+        void DispatchOrder(string text)
+        {
+            var parsed = parser.Parse(text);
+            True(parsed.Success && parsed.Command is not null, $"Order parses: {text}");
+            var acknowledgement = dispatcher.Dispatch(parsed.Command!, simulation);
+            True(!acknowledgement.StartsWith("No ", StringComparison.Ordinal),
+                $"Order dispatches: {text}");
+            orders++;
+        }
     }
+
+    Equal(3, progress.CompletedMissions.Count, "Representative play completes the campaign");
+}
+
+static ManualInput PlayerInputForObjective(BattleSimulation simulation)
+{
+    var selected = simulation.SelectedShip;
+    var objective = simulation.Mission.Objective;
+    var target = objective.Kind == MissionObjectiveKind.DestroyTarget
+        ? simulation.FindShip(objective.TargetId!)
+        : simulation.Ships
+            .Where(ship => ship.IsAlive && ship.Team == Team.Enemy && ship.Class == objective.TargetClass)
+            .MinBy(ship => ship.Position.DistanceTo(selected.Position));
+    target ??= simulation.Ships
+        .Where(ship => ship.IsAlive && ship.Team == Team.Enemy)
+        .MinBy(ship => ship.Position.DistanceTo(selected.Position));
+    if (target is null) return ManualInput.None;
+
+    var difference = target.Position - selected.Position;
+    var angleDifference = difference.Angle - selected.Angle;
+    while (angleDifference > Math.PI) angleDifference -= Math.PI * 2;
+    while (angleDifference < -Math.PI) angleDifference += Math.PI * 2;
+    var desiredRange = selected.Stats.WeaponRange * 0.65;
+    return new(
+        Thrust: difference.Length > desiredRange,
+        Reverse: difference.Length < desiredRange * 0.35,
+        TurnLeft: angleDifference < -0.04,
+        TurnRight: angleDifference > 0.04,
+        Fire: Math.Abs(angleDifference) < 0.55);
 }
 
 static void CampaignProgressionUnlocksMissions()
