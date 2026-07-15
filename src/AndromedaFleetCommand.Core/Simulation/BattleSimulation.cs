@@ -262,7 +262,7 @@ public sealed class BattleSimulation
             UpdateAttackOrder(ship, threat, dt);
             return;
         }
-        var phase = Math.Abs(ship.Id.GetHashCode(StringComparison.Ordinal) % 7) * 0.8 + ElapsedSeconds * 0.18;
+        var phase = StableHash(ship.Id) % 7 * 0.8 + ElapsedSeconds * 0.18;
         var guardPoint = protectedShip.Position + Vector2D.FromAngle(phase) * 105;
         SteerTo(ship, guardPoint, ship.Stats.MaxSpeed * 0.65, dt);
     }
@@ -455,6 +455,20 @@ public sealed class BattleSimulation
         while (difference > Math.PI) difference -= Math.PI * 2;
         while (difference < -Math.PI) difference += Math.PI * 2;
         return difference;
+    }
+
+    private static uint StableHash(string value)
+    {
+        unchecked
+        {
+            var hash = 2166136261u;
+            foreach (var character in value)
+            {
+                hash ^= character;
+                hash *= 16777619u;
+            }
+            return hash;
+        }
     }
 
     private static int PositiveModulo(int value, int modulo) => (value % modulo + modulo) % modulo;
