@@ -70,6 +70,12 @@ jobs:
             'Release/whisper-cli.exe' 'Release/whisper.dll' 'Release/ggml*.dll' \
             -d dist/windows/tools/whisper
           cp dist/linux/tools/whisper/LICENSE dist/windows/tools/whisper/LICENSE
+          ln -sfn libwhisper.so.1.9.1 dist/linux/tools/whisper/libwhisper.so.1
+          ln -sfn libwhisper.so.1 dist/linux/tools/whisper/libwhisper.so
+          ln -sfn libggml.so.0.15.1 dist/linux/tools/whisper/libggml.so.0
+          ln -sfn libggml.so.0 dist/linux/tools/whisper/libggml.so
+          ln -sfn libggml-base.so.0.15.1 dist/linux/tools/whisper/libggml-base.so.0
+          ln -sfn libggml-base.so.0 dist/linux/tools/whisper/libggml-base.so
           chmod +x dist/linux/tools/whisper/whisper-cli
           dist/linux/tools/whisper/whisper-cli --version
           test -s dist/windows/tools/whisper/whisper-cli.exe
@@ -81,6 +87,16 @@ jobs:
           ! grep -q "invalid UID" "$smoke_log"
           ./scripts/package-release.sh
           (cd dist/packages && sha256sum -c SHA256SUMS.txt)
+          packaged_linux="$(find dist/packages -maxdepth 1 -name '*Linux-x64.tar.gz' -print -quit)"
+          packaged_dir="$(mktemp -d)"
+          tar --no-same-owner -xzf "$packaged_linux" -C "$packaged_dir"
+          "$packaged_dir/tools/whisper/whisper-cli" --version
+          packaged_smoke_log="$(mktemp)"
+          HOME="$(mktemp -d)" timeout 30s \
+            "$packaged_dir/AndromedaFleetCommand.x86_64" --headless -- --smoke-test \
+            2>&1 | tee "$packaged_smoke_log"
+          grep -q "AFC_SMOKE_PASS" "$packaged_smoke_log"
+          ! grep -q "invalid UID" "$packaged_smoke_log"
       - uses: actions/upload-artifact@v4
         with:
           name: AndromedaFleetCommand-${{ github.ref_name }}
