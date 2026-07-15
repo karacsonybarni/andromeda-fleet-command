@@ -1413,8 +1413,8 @@ public sealed partial class Main : Node2D
                     new(teamColor, shieldAlpha), 3);
             }
         }
-        DrawLabel(ship.Name.ToUpperInvariant(), position + new Vector2(0, -(float)ship.Stats.Radius - 18),
-            12, teamColor, HorizontalAlignment.Center, 130);
+        DrawCenteredLabel(ship.Name.ToUpperInvariant(), position.X,
+            position.Y - (float)ship.Stats.Radius - 18, 12, teamColor, 130);
         DrawBar(new(position.X - 50, position.Y - (float)ship.Stats.Radius - 8), 100, 4,
             (float)ship.HullRatio, teamColor);
     }
@@ -1443,8 +1443,8 @@ public sealed partial class Main : Node2D
             DrawLine(anchor, anchor - direction * 9 + tangent * 6, new Color(Red, 0.82f), 2);
             DrawLine(anchor, anchor - direction * 9 - tangent * 6, new Color(Red, 0.82f), 2);
         }
-        DrawLabel($"TARGET  {distance:0} m", end + new Vector2(0, radius + 18), 10,
-            new Color(Red, 0.82f), HorizontalAlignment.Center, 150);
+        DrawCenteredLabel($"TARGET  {distance:0} m", end.X, end.Y + radius + 18, 10,
+            new Color(Red, 0.82f), 150);
     }
 
     private void DrawDashedLine(Vector2 from, Vector2 to, Color color, int segments, float width)
@@ -1540,8 +1540,8 @@ public sealed partial class Main : Node2D
             Math.Max(0.01, _simulation.InitialEnemyStrength)),
             "KETZAL EMPIRE", Red);
         var totalSeconds = (int)_simulation.ElapsedSeconds;
-        DrawLabel($"{totalSeconds / 60:00}:{totalSeconds % 60:00}", new(800, 40), 18,
-            new Color("e5edf5"), HorizontalAlignment.Center, 120);
+        DrawCenteredLabel($"{totalSeconds / 60:00}:{totalSeconds % 60:00}", 800, 40, 18,
+            new Color("e5edf5"), 120);
         DrawFleetPanel();
         DrawSelectedPanel();
         DrawCommandLog();
@@ -1550,7 +1550,7 @@ public sealed partial class Main : Node2D
         if (!string.IsNullOrWhiteSpace(_status) && !_commandMode)
         {
             DrawPanel(new(510, 87, 580, 38));
-            DrawLabel(_status, new(800, 112), 14, new Color("a0e1f5"), HorizontalAlignment.Center, 560);
+            DrawCenteredLabel(_status, 800, 112, 14, new Color("a0e1f5"), 560);
         }
         if (_simulation.Mission.Id == MissionId.FirstCommand && !_showHelp &&
             (!_tutorial.IsComplete || _tutorialCelebrationTime > 0))
@@ -1558,8 +1558,7 @@ public sealed partial class Main : Node2D
         if (_settings.Subtitles && _audioCaptionTime > 0)
         {
             DrawPanel(new(530, 681, 540, 36));
-            DrawLabel($"♪  {_audioCaption}", new(800, 705), 13, Colors.White,
-                HorizontalAlignment.Center, 510);
+            DrawCenteredLabel($"♪  {_audioCaption}", 800, 705, 13, Colors.White, 510);
         }
         DrawDamageAlert();
     }
@@ -1576,8 +1575,7 @@ public sealed partial class Main : Node2D
         DrawRect(new(1582, 74, 18, 826), color);
         DrawRect(new(0, 74, 1600, 12), color);
         DrawRect(new(0, 888, 1600, 12), color);
-        DrawLabel("HULL CRITICAL", new(800, 100), 12, new Color(Red, 0.82f),
-            HorizontalAlignment.Center, 200);
+        DrawCenteredLabel("HULL CRITICAL", 800, 100, 12, new Color(Red, 0.82f), 200);
     }
 
     private void DrawFactionBar(Vector2 position, float width, float ratio, string text, Color color)
@@ -1683,13 +1681,13 @@ public sealed partial class Main : Node2D
             }
             DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.75f));
             DrawPanel(new(370, 120, 860, 650));
-            DrawLabel($"MISSION {MissionCatalog.IndexOf(_simulation.Mission.Id) + 1}  •  {_simulation.Mission.Title.ToUpperInvariant()}",
-                new(800, 178), 29, Colors.White,
-                HorizontalAlignment.Center, 700);
-            DrawLabel(_simulation.Mission.Subtitle, new(800, 210), 16,
-                new Color("99d3e9"), HorizontalAlignment.Center, 700);
-            DrawLabel(_simulation.Mission.Briefing, new(800, 253), 14, new Color("dce7ee"),
-                HorizontalAlignment.Center, 750);
+            DrawCenteredLabel(
+                $"MISSION {MissionCatalog.IndexOf(_simulation.Mission.Id) + 1}  •  {_simulation.Mission.Title.ToUpperInvariant()}",
+                800, 178, 29, Colors.White, 700);
+            DrawCenteredLabel(_simulation.Mission.Subtitle, 800, 210, 16,
+                new Color("99d3e9"), 700);
+            DrawCenteredLabel(_simulation.Mission.Briefing, 800, 253, 14,
+                new Color("dce7ee"), 750);
             var controls = new[]
             {
                 ($"1–4 / {BindingLabel(GameActionIds.SwitchShip)}", "Switch controlled ship"),
@@ -1713,10 +1711,10 @@ public sealed partial class Main : Node2D
                 DrawLabel(description, new(700, y), 15, new Color("dce7ee"));
                 y += 34;
             }
-            DrawLabel($"Try: “{_simulation.Mission.RecommendedOrder}”", new(800, 675), 14,
-                new Color("ffd065"), HorizontalAlignment.Center, 700);
-            DrawLabel($"Press {BindingLabel(GameActionIds.Help)} to enter the battle", new(800, 724), 13,
-                new Color("87b5ca"), HorizontalAlignment.Center, 700);
+            DrawCenteredLabel($"Try: “{_simulation.Mission.RecommendedOrder}”", 800, 675, 14,
+                new Color("ffd065"), 700);
+            DrawCenteredLabel($"Press {BindingLabel(GameActionIds.Help)} to enter the battle", 800, 724, 13,
+                new Color("87b5ca"), 700);
         }
         else if (_paused && _simulation.Status == BattleStatus.Active)
         {
@@ -1756,12 +1754,12 @@ public sealed partial class Main : Node2D
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.84f));
         DrawPanel(new(270, 135, 1060, 630));
-        DrawLabel("CAPTAIN'S DRILL", new(800, 205), 38, Colors.White,
-            HorizontalAlignment.Center, 900);
-        DrawLabel("Four actions. About sixty seconds. Learn by commanding.", new(800, 242), 16,
-            Cyan, HorizontalAlignment.Center, 900);
-        DrawLabel("Raiders have trapped a civilian convoy. Master the fleet, then disable their leader.",
-            new(800, 282), 14, new Color("c9dce6"), HorizontalAlignment.Center, 920);
+        DrawCenteredLabel("CAPTAIN'S DRILL", 800, 205, 38, Colors.White, 900);
+        DrawCenteredLabel("Four actions. About sixty seconds. Learn by commanding.", 800, 242, 16,
+            Cyan, 900);
+        DrawCenteredLabel(
+            "Raiders have trapped a civilian convoy. Master the fleet, then disable their leader.",
+            800, 282, 14, new Color("c9dce6"), 920);
 
         for (var index = 0; index < TutorialTracker.Steps.Count; index++)
         {
@@ -1773,11 +1771,9 @@ public sealed partial class Main : Node2D
             DrawPanel(new(x, 335, 214, 230));
             DrawCircle(new(x + 107, 382), 23, new(color, 0.2f));
             DrawArc(new(x + 107, 382), 23, 0, Mathf.Tau, 36, color, 2);
-            DrawLabel(completed ? "✓" : $"{index + 1}", new(x + 107, 390), 18, color,
-                HorizontalAlignment.Center, 30);
-            DrawLabel(step.Title.ToUpperInvariant(), new(x + 107, 435), 15, Colors.White,
-                HorizontalAlignment.Center, 190);
-            DrawLabel(step.Action switch
+            DrawCenteredLabel(completed ? "✓" : $"{index + 1}", x + 107, 390, 18, color, 30);
+            DrawCenteredLabel(step.Title.ToUpperInvariant(), x + 107, 435, 15, Colors.White, 190);
+            DrawCenteredLabel(step.Action switch
             {
                 TutorialAction.SwitchShip =>
                     $"{BindingLabel(GameActionIds.SwitchShip)}  /  {GamepadButtonLabel(GamepadActionIds.SwitchShip)}",
@@ -1788,18 +1784,17 @@ public sealed partial class Main : Node2D
                     $"{BindingLabel(GameActionIds.Command)}  /  {GamepadButtonLabel(GamepadActionIds.Voice)}",
                 _ =>
                     $"{BindingLabel(GameActionIds.Ability)}  /  {GamepadButtonLabel(GamepadActionIds.Ability)}"
-            }, new(x + 107, 475), 14, color, HorizontalAlignment.Center, 190);
-            DrawLabel(step.Purpose, new(x + 107, 523), 12, new Color("9fc5d6"),
-                HorizontalAlignment.Center, 190);
+            }, x + 107, 475, 14, color, 190);
+            DrawCenteredLabel(step.Purpose, x + 107, 523, 12, new Color("9fc5d6"), 190);
         }
 
-        DrawLabel($"Objective after training: {_simulation.Mission.Objective.Title}", new(800, 628), 16,
-            new Color("ffd065"), HorizontalAlignment.Center, 900);
-        DrawLabel(_lastInputWasController ? "Press A or START to deploy" :
+        DrawCenteredLabel($"Objective after training: {_simulation.Mission.Objective.Title}", 800, 628, 16,
+            new Color("ffd065"), 900);
+        DrawCenteredLabel(_lastInputWasController ? "Press A or START to deploy" :
                 $"Press {BindingLabel(GameActionIds.Help)} to deploy",
-            new(800, 700), 18, Colors.White, HorizontalAlignment.Center, 900);
-        DrawLabel("The battle is paused while this briefing is open", new(800, 730), 12,
-            new Color("789bac"), HorizontalAlignment.Center, 900);
+            800, 700, 18, Colors.White, 900);
+        DrawCenteredLabel("The battle is paused while this briefing is open", 800, 730, 12,
+            new Color("789bac"), 900);
     }
 
     private void DrawTutorialCoach()
@@ -1822,10 +1817,9 @@ public sealed partial class Main : Node2D
 
         if (_tutorial.IsComplete)
         {
-            DrawLabel("CAPTAIN CERTIFIED", new(800, 174), 19, border,
-                HorizontalAlignment.Center, 690);
-            DrawLabel("Training complete • Destroy the raider leader", new(800, 207), 14,
-                Colors.White, HorizontalAlignment.Center, 690);
+            DrawCenteredLabel("CAPTAIN CERTIFIED", 800, 174, 19, border, 690);
+            DrawCenteredLabel("Training complete • Destroy the raider leader", 800, 207, 14,
+                Colors.White, 690);
             return;
         }
 
@@ -1840,22 +1834,18 @@ public sealed partial class Main : Node2D
                 DrawLine(new(673 + index * 90, 153), new(747 + index * 90, 153),
                     new(color, 0.45f), 2);
         }
-        DrawLabel(step.Title.ToUpperInvariant(), new(800, 183), 16, border,
-            HorizontalAlignment.Center, 690);
-        DrawLabel(TutorialPrompt(), new(800, 207), 14, Colors.White,
-            HorizontalAlignment.Center, 690);
-        DrawLabel(step.Purpose, new(800, 226), 11, new Color("8db6c9"),
-            HorizontalAlignment.Center, 690);
+        DrawCenteredLabel(step.Title.ToUpperInvariant(), 800, 183, 16, border, 690);
+        DrawCenteredLabel(TutorialPrompt(), 800, 207, 14, Colors.White, 690);
+        DrawCenteredLabel(step.Purpose, 800, 226, 11, new Color("8db6c9"), 690);
     }
 
     private void DrawMissionSelect()
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.82f));
         DrawPanel(new(390, 130, 820, 620));
-        DrawLabel("CAMPAIGN MISSIONS", new(800, 198), 34, Colors.White,
-            HorizontalAlignment.Center, 700);
-        DrawLabel("Three escalating fleet-command engagements", new(800, 230), 15,
-            new Color("99d3e9"), HorizontalAlignment.Center, 700);
+        DrawCenteredLabel("CAMPAIGN MISSIONS", 800, 198, 34, Colors.White, 700);
+        DrawCenteredLabel("Three escalating fleet-command engagements", 800, 230, 15,
+            new Color("99d3e9"), 700);
 
         for (var index = 0; index < MissionCatalog.All.Count; index++)
         {
@@ -1872,19 +1862,16 @@ public sealed partial class Main : Node2D
             if (completed) DrawLabel("COMPLETE", new(1010, y + 12), 13, new Color("48eba9"));
         }
 
-        DrawLabel($"Press 1–3 to deploy • {BindingLabel(GameActionIds.Missions)} or Esc to close",
-            new(800, 690), 14,
-            new Color("ffd065"), HorizontalAlignment.Center, 700);
+        DrawCenteredLabel($"Press 1–3 to deploy • {BindingLabel(GameActionIds.Missions)} or Esc to close",
+            800, 690, 14, new Color("ffd065"), 700);
     }
 
     private void DrawLocalAiSetup()
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.86f));
         DrawPanel(new(350, 105, 900, 690));
-        DrawLabel("LOCAL AI CONTROL CENTER", new(800, 175), 32, Colors.White,
-            HorizontalAlignment.Center, 780);
-        DrawLabel("Runtime commands stay on this computer", new(800, 208), 15, Cyan,
-            HorizontalAlignment.Center, 780);
+        DrawCenteredLabel("LOCAL AI CONTROL CENTER", 800, 175, 32, Colors.White, 780);
+        DrawCenteredLabel("Runtime commands stay on this computer", 800, 208, 15, Cyan, 780);
 
         DrawSetupRow(280, "OFFLINE COMMAND PARSER", true,
             "Always available — no model, account, or internet required");
@@ -1904,23 +1891,19 @@ public sealed partial class Main : Node2D
                     ? "whisper-cli found; press W to download the speech model"
                     : "Bundled runtime not found; source builds can provide whisper-cli on PATH");
 
-        DrawLabel(_localAiBusy ? "WORKING — this may take several minutes" : _localAiReadiness.Detail,
-            new(800, 625), 14, _localAiBusy ? new Color("ffd065") : new Color("b9d9e7"),
-            HorizontalAlignment.Center, 780);
-        DrawLabel("O  Install model     G  GPU/CPU mode     W  Speech model     R  Rescan",
-            new(800, 690), 15, new Color("ffd065"), HorizontalAlignment.Center, 780);
-        DrawLabel("L or Esc to close", new(800, 735), 13, new Color("87b5ca"),
-            HorizontalAlignment.Center, 780);
+        DrawCenteredLabel(_localAiBusy ? "WORKING — this may take several minutes" : _localAiReadiness.Detail,
+            800, 625, 14, _localAiBusy ? new Color("ffd065") : new Color("b9d9e7"), 780);
+        DrawCenteredLabel("O  Install model     G  GPU/CPU mode     W  Speech model     R  Rescan",
+            800, 690, 15, new Color("ffd065"), 780);
+        DrawCenteredLabel("L or Esc to close", 800, 735, 13, new Color("87b5ca"), 780);
     }
 
     private void DrawSettings()
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.87f));
         DrawPanel(new(390, 115, 820, 670));
-        DrawLabel("SETTINGS & ACCESSIBILITY", new(800, 185), 31, Colors.White,
-            HorizontalAlignment.Center, 700);
-        DrawLabel("Changes save immediately", new(800, 216), 14, Cyan,
-            HorizontalAlignment.Center, 700);
+        DrawCenteredLabel("SETTINGS & ACCESSIBILITY", 800, 185, 31, Colors.White, 700);
+        DrawCenteredLabel("Changes save immediately", 800, 216, 14, Cyan, 700);
 
         var rows = new (string Key, string Name, string Value)[]
         {
@@ -1940,26 +1923,23 @@ public sealed partial class Main : Node2D
                 HorizontalAlignment.Right, 100);
             y += 86;
         }
-        DrawLabel("K  Keyboard controls     •     PAD Y  Controller buttons",
-            new(800, 684), 14, new Color("ffd065"), HorizontalAlignment.Center, 700);
-        DrawLabel($"Controller: left stick fly • {GamepadButtonLabel(GamepadActionIds.Fire)} fire • " +
+        DrawCenteredLabel("K  Keyboard controls     •     PAD Y  Controller buttons",
+            800, 684, 14, new Color("ffd065"), 700);
+        DrawCenteredLabel($"Controller: left stick fly • {GamepadButtonLabel(GamepadActionIds.Fire)} fire • " +
                   $"{GamepadButtonLabel(GamepadActionIds.Ability)} ability • " +
                   $"{GamepadButtonLabel(GamepadActionIds.SwitchShip)} switch ship",
-            new(800, 716), 13, new Color("9bc9dc"), HorizontalAlignment.Center, 700);
-        DrawLabel("F10 or Esc to close", new(800, 750), 13, new Color("87b5ca"),
-            HorizontalAlignment.Center, 700);
+            800, 716, 13, new Color("9bc9dc"), 700);
+        DrawCenteredLabel("F10 or Esc to close", 800, 750, 13, new Color("87b5ca"), 700);
     }
 
     private void DrawBindings()
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.9f));
         DrawPanel(new(255, 75, 1090, 750));
-        DrawLabel(_bindingDeviceGamepad ? "CONTROLLER BUTTONS" : "KEYBOARD CONTROLS",
-            new(800, 140), 31, Colors.White,
-            HorizontalAlignment.Center, 900);
-        DrawLabel("Assignments save immediately • conflicts swap automatically • G / LB switches device",
-            new(800, 173), 14,
-            Cyan, HorizontalAlignment.Center, 900);
+        DrawCenteredLabel(_bindingDeviceGamepad ? "CONTROLLER BUTTONS" : "KEYBOARD CONTROLS",
+            800, 140, 31, Colors.White, 900);
+        DrawCenteredLabel("Assignments save immediately • conflicts swap automatically • G / LB switches device",
+            800, 173, 14, Cyan, 900);
 
         var actions = _bindingDeviceGamepad
             ? GamepadActions.All.Select(action => (action.Id, action.Label)).ToArray()
@@ -1987,25 +1967,23 @@ public sealed partial class Main : Node2D
         if (_captureBinding)
         {
             DrawPanel(new(420, 645, 760, 82));
-            DrawLabel($"PRESS A {(_bindingDeviceGamepad ? "BUTTON" : "KEY")} FOR " +
+            DrawCenteredLabel($"PRESS A {(_bindingDeviceGamepad ? "BUTTON" : "KEY")} FOR " +
                       actions[_bindingSelection].Label.ToUpperInvariant(),
-                new(800, 681), 18, new Color("ffd065"), HorizontalAlignment.Center, 700);
-            DrawLabel(_bindingDeviceGamepad
+                800, 681, 18, new Color("ffd065"), 700);
+            DrawCenteredLabel(_bindingDeviceGamepad
                     ? "PAD BACK cancels • the Settings button stays reserved"
                     : "Esc cancels • system and diagnostic keys are reserved",
-                new(800, 708), 12,
-                new Color("a9c7d5"), HorizontalAlignment.Center, 700);
+                800, 708, 12, new Color("a9c7d5"), 700);
         }
         else
         {
-            DrawLabel(_bindingDeviceGamepad
+            DrawCenteredLabel(_bindingDeviceGamepad
                     ? "D-PAD choose  •  A rebind  •  X default  •  Y reset all"
                     : "↑/↓ choose  •  Enter rebind  •  Backspace default  •  R reset all",
-                new(800, 705), 14, new Color("ffd065"), HorizontalAlignment.Center, 920);
+                800, 705, 14, new Color("ffd065"), 920);
         }
-        DrawLabel(_bindingDeviceGamepad ? "B / BACK returns to settings" : "K or Esc returns to settings",
-            new(800, 772), 13, new Color("87b5ca"),
-            HorizontalAlignment.Center, 900);
+        DrawCenteredLabel(_bindingDeviceGamepad ? "B / BACK returns to settings" : "K or Esc returns to settings",
+            800, 772, 13, new Color("87b5ca"), 900);
     }
 
     private void DrawSetupRow(float y, string title, bool ready, string detail)
@@ -2021,8 +1999,8 @@ public sealed partial class Main : Node2D
     private void DrawBanner(string title, string subtitle, Color color)
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.78f));
-        DrawLabel(title, new(800, 410), 58, color, HorizontalAlignment.Center, 900);
-        DrawLabel(subtitle, new(800, 452), 19, Colors.White, HorizontalAlignment.Center, 900);
+        DrawCenteredLabel(title, 800, 410, 58, color, 900);
+        DrawCenteredLabel(subtitle, 800, 452, 19, Colors.White, 900);
     }
 
     private void DrawPanel(Rect2 rect)
@@ -2046,6 +2024,11 @@ public sealed partial class Main : Node2D
         HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1)
     {
         DrawString(ThemeDB.FallbackFont, position, text, alignment, width, size, color);
+    }
+
+    private void DrawCenteredLabel(string text, float centerX, float y, int size, Color color, float width)
+    {
+        DrawLabel(text, new(centerX - width / 2, y), size, color, HorizontalAlignment.Center, width);
     }
 
     private static string SplitPascalCase(string value) => string.Concat(value.Select((character, index) =>
