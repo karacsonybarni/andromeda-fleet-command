@@ -42,7 +42,8 @@ jobs:
           dotnet build AndromedaFleetCommand.Game.csproj --configuration Release
           "$GODOT_EDITOR" --headless --editor --path . --quit-after 10
           dotnet build AndromedaFleetCommand.Game.csproj --configuration Debug
-          ./scripts/multiplayer-smoke.sh "$GODOT_EDITOR" editor
+          ./scripts/multiplayer-smoke.sh "$GODOT_EDITOR" editor cooperative
+          ./scripts/multiplayer-smoke.sh "$GODOT_EDITOR" editor versus
           mkdir -p visual-qa
           log="$(mktemp)"
           command -v xvfb-run

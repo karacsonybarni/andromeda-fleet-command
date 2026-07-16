@@ -1,13 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-game="${1:?Usage: multiplayer-smoke.sh GAME_EXECUTABLE [editor]}"
+game="${1:?Usage: multiplayer-smoke.sh GAME_EXECUTABLE [editor] [cooperative|versus]}"
 mode="${2:-exported}"
+match_mode="${3:-cooperative}"
 host_log="$(mktemp)"
 client_log="$(mktemp)"
 host_home="$(mktemp -d)"
 client_home="$(mktemp -d)"
 host_pid=""
+
+case "$match_mode" in
+  cooperative) expected_mode="Cooperative" ;;
+  versus) expected_mode="Versus" ;;
+  *) echo "Match mode must be cooperative or versus" >&2; exit 2 ;;
+esac
 
 cleanup() {
   if [[ -n "$host_pid" ]] && kill -0 "$host_pid" 2>/dev/null; then
@@ -29,7 +36,8 @@ fi
 # Godot's exported .NET host can stall before C# initialization when stdout is a
 # regular file. Keep stdout as a pipe, as it is in the regular release smoke,
 # while tee captures the log without flooding CI output.
-AFC_MULTIPLAYER_SMOKE_ROLE=host HOME="$host_home" timeout "${process_timeout}s" "$game" "${args[@]}" \
+AFC_MULTIPLAYER_SMOKE_ROLE=host AFC_MULTIPLAYER_SMOKE_MODE="$match_mode" HOME="$host_home" \
+  timeout "${process_timeout}s" "$game" "${args[@]}" \
   </dev/null > >(tee "$host_log" >/dev/null) 2>&1 &
 host_pid=$!
 
@@ -46,7 +54,8 @@ if ! grep -q "AFC_MP_HOST_READY" "$host_log"; then
 fi
 
 set +e
-AFC_MULTIPLAYER_SMOKE_ROLE=client HOME="$client_home" timeout "${process_timeout}s" "$game" "${args[@]}" \
+AFC_MULTIPLAYER_SMOKE_ROLE=client AFC_MULTIPLAYER_SMOKE_MODE="$match_mode" HOME="$client_home" \
+  timeout "${process_timeout}s" "$game" "${args[@]}" \
   </dev/null > >(tee "$client_log" >/dev/null) 2>&1
 client_status=$?
 wait "$host_pid"
@@ -57,6 +66,7 @@ sed -n '1,240p' "$host_log"
 sed -n '1,240p' "$client_log"
 test "$host_status" -eq 0
 test "$client_status" -eq 0
-grep -q "AFC_MP_HOST_PASS" "$host_log"
-grep -q "AFC_MP_CLIENT_PASS" "$client_log"
+grep -q "AFC_MP_HOST_PASS mode=$expected_mode" "$host_log"
+grep -q "AFC_MP_CLIENT_PASS mode=$expected_mode" "$client_log"
 ! grep -qE "ERROR:|Unhandled exception|InvalidOperationException" "$host_log" "$client_log"
+! grep -qE "above the MTU|higher packet loss" "$host_log" "$client_log"

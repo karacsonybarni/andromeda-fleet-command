@@ -106,16 +106,20 @@ public sealed partial class Main : Node2D
     private bool _multiplayerSmokeClient;
     private bool _multiplayerSmokePassed;
     private bool _multiplayerSmokeSnapshotSeen;
+    private MultiplayerMode _multiplayerSmokeMode = MultiplayerMode.Cooperative;
 
     public override void _Ready()
     {
         var commandArguments = OS.GetCmdlineUserArgs();
         var multiplayerSmokeRole = System.Environment.GetEnvironmentVariable("AFC_MULTIPLAYER_SMOKE_ROLE");
+        var multiplayerSmokeMode = System.Environment.GetEnvironmentVariable("AFC_MULTIPLAYER_SMOKE_MODE");
         _smokeTest = commandArguments.Contains("--smoke-test", StringComparer.Ordinal);
         _multiplayerSmokeHost = multiplayerSmokeRole?.Equals("host", StringComparison.OrdinalIgnoreCase) == true ||
                                 commandArguments.Contains("--multiplayer-smoke-host", StringComparer.Ordinal);
         _multiplayerSmokeClient = multiplayerSmokeRole?.Equals("client", StringComparison.OrdinalIgnoreCase) == true ||
                                   commandArguments.Contains("--multiplayer-smoke-client", StringComparer.Ordinal);
+        if (multiplayerSmokeMode?.Equals("versus", StringComparison.OrdinalIgnoreCase) == true)
+            _multiplayerSmokeMode = MultiplayerMode.Versus;
         ReportMultiplayerSmokeBoot("arguments");
         _visualQa = commandArguments.Contains("--visual-qa", StringComparer.Ordinal);
         var benchmarkMode = commandArguments.Contains("--benchmark", StringComparer.Ordinal);
@@ -158,9 +162,9 @@ public sealed partial class Main : Node2D
         {
             _showHelp = false;
             ReportMultiplayerSmokeBoot("host-create");
-            var result = _multiplayer.Host(MultiplayerMode.Cooperative, "Smoke Host");
+            var result = _multiplayer.Host(_multiplayerSmokeMode, "Smoke Host");
             if (!result.Accepted) throw new InvalidOperationException(result.Message);
-            GD.Print("AFC_MP_HOST_READY");
+            GD.Print($"AFC_MP_HOST_READY mode={_multiplayerSmokeMode}");
         }
         else if (_multiplayerSmokeClient)
         {
@@ -796,6 +800,9 @@ public sealed partial class Main : Node2D
 
     private void OnMultiplayerMatchStarted(MatchStartMessage start)
     {
+        if ((_multiplayerSmokeHost || _multiplayerSmokeClient) && start.Lobby.Mode != _multiplayerSmokeMode)
+            throw new InvalidOperationException(
+                $"Multiplayer smoke expected {_multiplayerSmokeMode} but joined {start.Lobby.Mode}");
         _wasMultiplayerMatch = true;
         _simulation = new(start.Snapshot.Frame.MissionId, start.Snapshot.Frame.Seed);
         _simulation.ApplyFrame(start.Snapshot.Frame);
@@ -843,8 +850,13 @@ public sealed partial class Main : Node2D
             {
                 _multiplayerSmokePassed = true;
                 var role = _multiplayerSmokeHost ? "HOST" : "CLIENT";
-                GD.Print($"AFC_MP_{role}_PASS tick={snapshot.ServerTick} ships={_multiplayer!.LocalShipIds.Count}");
-                GetTree().Quit();
+                GD.Print($"AFC_MP_{role}_PASS mode={_multiplayerSmokeMode}" +
+                         $" tick={snapshot.ServerTick} ships={_multiplayer!.LocalShipIds.Count}");
+                Callable.From(() =>
+                {
+                    _multiplayer?.Close(false);
+                    GetTree().Quit();
+                }).CallDeferred();
             }
         }
     }
