@@ -110,9 +110,12 @@ public sealed partial class Main : Node2D
     public override void _Ready()
     {
         var commandArguments = OS.GetCmdlineUserArgs();
+        var multiplayerSmokeRole = System.Environment.GetEnvironmentVariable("AFC_MULTIPLAYER_SMOKE_ROLE");
         _smokeTest = commandArguments.Contains("--smoke-test", StringComparer.Ordinal);
-        _multiplayerSmokeHost = commandArguments.Contains("--multiplayer-smoke-host", StringComparer.Ordinal);
-        _multiplayerSmokeClient = commandArguments.Contains("--multiplayer-smoke-client", StringComparer.Ordinal);
+        _multiplayerSmokeHost = multiplayerSmokeRole?.Equals("host", StringComparison.OrdinalIgnoreCase) == true ||
+                                commandArguments.Contains("--multiplayer-smoke-host", StringComparer.Ordinal);
+        _multiplayerSmokeClient = multiplayerSmokeRole?.Equals("client", StringComparison.OrdinalIgnoreCase) == true ||
+                                  commandArguments.Contains("--multiplayer-smoke-client", StringComparer.Ordinal);
         ReportMultiplayerSmokeBoot("arguments");
         _visualQa = commandArguments.Contains("--visual-qa", StringComparer.Ordinal);
         var benchmarkMode = commandArguments.Contains("--benchmark", StringComparer.Ordinal);

@@ -17,11 +17,11 @@ cleanup() {
 trap cleanup EXIT
 
 if [[ "$mode" == "editor" ]]; then
-  args=(--headless --path . --)
+  args=(--headless --path .)
   process_timeout=25
   readiness_attempts=100
 else
-  args=(--headless --)
+  args=(--headless)
   process_timeout=150
   readiness_attempts=900
 fi
@@ -29,7 +29,7 @@ fi
 # Godot's exported .NET host can stall before C# initialization when stdout is a
 # regular file. Keep stdout as a pipe, as it is in the regular release smoke,
 # while tee captures the log without flooding CI output.
-HOME="$host_home" timeout "${process_timeout}s" "$game" "${args[@]}" --multiplayer-smoke-host \
+AFC_MULTIPLAYER_SMOKE_ROLE=host HOME="$host_home" timeout "${process_timeout}s" "$game" "${args[@]}" \
   </dev/null > >(tee "$host_log" >/dev/null) 2>&1 &
 host_pid=$!
 
@@ -46,7 +46,7 @@ if ! grep -q "AFC_MP_HOST_READY" "$host_log"; then
 fi
 
 set +e
-HOME="$client_home" timeout "${process_timeout}s" "$game" "${args[@]}" --multiplayer-smoke-client \
+AFC_MULTIPLAYER_SMOKE_ROLE=client HOME="$client_home" timeout "${process_timeout}s" "$game" "${args[@]}" \
   </dev/null > >(tee "$client_log" >/dev/null) 2>&1
 client_status=$?
 wait "$host_pid"
