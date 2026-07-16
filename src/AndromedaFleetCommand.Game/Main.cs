@@ -113,6 +113,7 @@ public sealed partial class Main : Node2D
         _smokeTest = commandArguments.Contains("--smoke-test", StringComparer.Ordinal);
         _multiplayerSmokeHost = commandArguments.Contains("--multiplayer-smoke-host", StringComparer.Ordinal);
         _multiplayerSmokeClient = commandArguments.Contains("--multiplayer-smoke-client", StringComparer.Ordinal);
+        ReportMultiplayerSmokeBoot("arguments");
         _visualQa = commandArguments.Contains("--visual-qa", StringComparer.Ordinal);
         var benchmarkMode = commandArguments.Contains("--benchmark", StringComparer.Ordinal);
         _settingsStore = new(ProjectSettings.GlobalizePath("user://settings.json"));
@@ -121,6 +122,7 @@ public sealed partial class Main : Node2D
         _bindings = _bindingsStore.Load();
         _gamepadBindingsStore = new(ProjectSettings.GlobalizePath("user://gamepad-bindings.json"));
         _gamepadBindings = _gamepadBindingsStore.Load();
+        ReportMultiplayerSmokeBoot("settings");
         _status = $"Press {BindingLabel(GameActionIds.Help)} when ready";
         _crashReports = new(ProjectSettings.GlobalizePath("user://crashes"));
         _replayStore = new(ProjectSettings.GlobalizePath("user://replays"));
@@ -129,6 +131,7 @@ public sealed partial class Main : Node2D
         _localAiConfiguration = LocalAiConfiguration.ApplyEnvironment(_localAiStore.Load());
         _localAiSetup = new();
         RebuildLocalAiAdapters();
+        ReportMultiplayerSmokeBoot("local-ai");
         _audio = new(this);
         if (!_smokeTest && !_visualQa && !benchmarkMode && !_multiplayerSmokeHost && !_multiplayerSmokeClient)
             _audio.StartAmbient();
@@ -139,6 +142,7 @@ public sealed partial class Main : Node2D
         LoadShipArt();
         CreateCommandLine();
         CreateMultiplayerControls();
+        ReportMultiplayerSmokeBoot("scene");
         _multiplayer = new MultiplayerManager { Name = "MultiplayerManager" };
         _multiplayer.LobbyChanged += OnMultiplayerLobbyChanged;
         _multiplayer.MatchStarted += OnMultiplayerMatchStarted;
@@ -146,9 +150,11 @@ public sealed partial class Main : Node2D
         _multiplayer.NoticeReceived += OnMultiplayerNotice;
         _multiplayer.StateChanged += OnMultiplayerStateChanged;
         AddChild(_multiplayer);
+        ReportMultiplayerSmokeBoot("network-manager");
         if (_multiplayerSmokeHost)
         {
             _showHelp = false;
+            ReportMultiplayerSmokeBoot("host-create");
             var result = _multiplayer.Host(MultiplayerMode.Cooperative, "Smoke Host");
             if (!result.Accepted) throw new InvalidOperationException(result.Message);
             GD.Print("AFC_MP_HOST_READY");
@@ -186,6 +192,12 @@ public sealed partial class Main : Node2D
         }
         GetViewport().SizeChanged += QueueRedraw;
         QueueRedraw();
+    }
+
+    private void ReportMultiplayerSmokeBoot(string stage)
+    {
+        if (_multiplayerSmokeHost || _multiplayerSmokeClient)
+            GD.Print($"AFC_MP_BOOT role={(_multiplayerSmokeHost ? "host" : "client")} stage={stage}");
     }
 
     public override void _ExitTree()
