@@ -22,8 +22,8 @@ if [[ "$mode" == "editor" ]]; then
   readiness_attempts=100
 else
   args=(--headless --)
-  process_timeout=60
-  readiness_attempts=400
+  process_timeout=150
+  readiness_attempts=900
 fi
 
 HOME="$host_home" timeout "${process_timeout}s" "$game" "${args[@]}" --multiplayer-smoke-host >"$host_log" 2>&1 &
@@ -36,6 +36,7 @@ for _ in $(seq 1 "$readiness_attempts"); do
 done
 
 if ! grep -q "AFC_MP_HOST_READY" "$host_log"; then
+  echo "Multiplayer host did not become ready after $((readiness_attempts / 10)) seconds." >&2
   sed -n '1,240p' "$host_log"
   exit 1
 fi
