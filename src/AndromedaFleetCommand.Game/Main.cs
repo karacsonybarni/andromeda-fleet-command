@@ -1798,3 +1798,1104 @@ public sealed partial class Main : Node2D
         const float radius = 708;
         DrawCircle(center, radius + 24, new Color(0.04f, 0.38f, 0.72f, 0.055f));
         DrawCircle(center, radius + 12, new Color(0.05f, 0.5f, 0.88f, 0.09f));
+        DrawCircle(center, radius, new Color("092846"));
+        DrawCircle(center + new Vector2(-105, 65), radius * 0.82f, new Color("0c3c63"));
+        DrawCircle(center + new Vector2(-260, 40), radius * 0.58f, new Color("105078"));
+        for (var band = 0; band < 6; band++)
+        {
+            var angle = 3.61f + band * 0.31f;
+            DrawArc(center + new Vector2(-30 + band * 9, 12 - band * 7), radius - 44 - band * 18,
+                angle, angle + 0.72f, 42, new Color(0.23f, 0.68f, 0.82f, 0.08f + band * 0.012f),
+                9 - band * 0.8f, true);
+        }
+        DrawCircle(center + new Vector2(410, -245), radius * 0.92f, new Color(0.005f, 0.012f, 0.028f, 0.57f));
+        DrawArc(center, radius - 15, 3.54f, 5.88f, 120, new Color(0.08f, 0.42f, 0.72f, 0.3f), 20);
+        DrawArc(center, radius, 3.54f, 5.88f, 120, new Color(0.27f, 0.8f, 1f, 0.78f), 5);
+    }
+
+    private void DrawGrid()
+    {
+        var color = new Color(0.16f, 0.58f, 0.78f, 0.055f);
+        for (var x = 100; x < 1600; x += 100) DrawLine(new(x, 74), new(x, 838), color);
+        for (var y = 100; y < 850; y += 100) DrawLine(new(0, y), new(1600, y), color);
+        DrawArc(new(800, 450), 210, 0, Mathf.Tau, 96, new(0.2f, 0.75f, 1f, 0.12f));
+        DrawArc(new(800, 450), 335, 0, Mathf.Tau, 96, new(0.2f, 0.75f, 1f, 0.1f));
+        var sweepAngle = (float)_visualTime * 0.22f;
+        var sweep = new Vector2(Mathf.Cos(sweepAngle), Mathf.Sin(sweepAngle));
+        DrawLine(new(800, 450), new Vector2(800, 450) + sweep * 335,
+            new Color(Cyan, 0.08f), 2);
+        DrawArc(new(800, 450), 335, sweepAngle - 0.12f, sweepAngle, 10,
+            new Color(Cyan, 0.16f), 4);
+    }
+
+    private void DrawOrderVisualizations()
+    {
+        foreach (var ship in _simulation.Ships.Where(candidate =>
+                     candidate.IsAlive && candidate.Team == Team.Player))
+        {
+            var start = ToVector(ship.Position);
+            Vector2? destination = null;
+            if (ship.Order.TargetId is { } targetId && _simulation.FindShip(targetId) is { IsAlive: true } target)
+                destination = ToVector(target.Position);
+            else if (ship.Order.Destination is { } orderedPosition)
+                destination = ToVector(orderedPosition);
+            if (destination is not { } end || start.DistanceTo(end) < 45) continue;
+
+            var selected = ship.Id == _simulation.SelectedShip.Id;
+            var orderColor = ship.Order.Type switch
+            {
+                OrderType.Defend => new Color("4be6a3"),
+                OrderType.Intercept => new Color("ffd065"),
+                OrderType.Retreat => Orange,
+                _ => Cyan
+            };
+            DrawDashedLine(start, end, new Color(orderColor, selected ? 0.42f : 0.17f),
+                selected ? 18 : 14, selected ? 2.2f : 1.2f);
+            var direction = (end - start).Normalized();
+            var tangent = new Vector2(-direction.Y, direction.X);
+            for (var marker = 1; marker <= 2; marker++)
+            {
+                var center = start.Lerp(end, marker / 3f);
+                DrawLine(center - direction * 7 + tangent * 5, center, new Color(orderColor, 0.54f), 1.6f);
+                DrawLine(center - direction * 7 - tangent * 5, center, new Color(orderColor, 0.54f), 1.6f);
+            }
+            if (!selected) continue;
+            var labelPosition = start.Lerp(end, 0.52f);
+            DrawCenteredLabel(ship.Order.Type.ToString().ToUpperInvariant(), labelPosition.X,
+                labelPosition.Y - 11, 9, new Color(orderColor, 0.78f), 100);
+        }
+    }
+
+    private void DrawEnemyGroupLabels()
+    {
+        var groups = _simulation.Ships
+            .Where(ship => ship.IsAlive && ship.Team == Team.Enemy &&
+                           ship.Class is ShipClass.Bomber or ShipClass.Escort)
+            .GroupBy(ship => ship.Class)
+            .Where(group => group.Count() >= 2);
+        foreach (var group in groups)
+        {
+            var center = new Vector2((float)group.Average(ship => ship.Position.X),
+                (float)group.Average(ship => ship.Position.Y));
+            var title = group.Key == ShipClass.Bomber ? "BOMBER WING" : "ESCORT SCREEN";
+            DrawLine(center + new Vector2(-54, -14), center + new Vector2(54, -14),
+                new Color(Red, 0.24f), 1.2f, true);
+            DrawCenteredLabel($"{title}  •  {group.Count()}", center.X, center.Y - 24,
+                10, new Color(Red, 0.88f), 150);
+        }
+    }
+
+    private void DrawProjectile(Projectile projectile)
+    {
+        var color = projectile.Team == Team.Player ? Cyan : Orange;
+        var head = ToVector(projectile.Position);
+        var tail = ToVector(projectile.Position - projectile.Velocity.Normalized * 22);
+        var pulse = 0.72f + Mathf.Sin((float)_visualTime * 26f + head.X * 0.03f) * 0.18f;
+        DrawLine(tail, head, new(color, 0.18f), 12, true);
+        DrawLine(tail, head, new(color, pulse), 3.2f, true);
+        DrawCircle(head, 7, new Color(color, 0.13f));
+        DrawCircle(head, 2.4f, Colors.White);
+    }
+
+    private void DrawShip(Ship ship)
+    {
+        var position = ToVector(ship.Position);
+        var teamColor = ship.Team == Team.Player ? Cyan : Red;
+        var selected = ship.Id == _simulation.SelectedShip.Id;
+        var visualScale = ship.Class switch
+        {
+            ShipClass.Flagship => 1.32f,
+            ShipClass.Carrier => 1.24f,
+            ShipClass.Destroyer => 1.14f,
+            _ => 1f
+        };
+        var visualRadius = (float)ship.Stats.Radius * visualScale;
+        DrawCircle(position, visualRadius * 2.15f, new Color(teamColor, selected ? 0.075f : 0.035f));
+        DrawCircle(position + new Vector2(7, 10), visualRadius * 1.24f,
+            new Color(0, 0, 0, 0.32f));
+        DrawSetTransform(position, (float)ship.Angle);
+        if (ship.Velocity.Length > 8)
+        {
+            var thrust = Mathf.Clamp((float)(ship.Velocity.Length / ship.EffectiveMaxSpeed), 0.2f, 1);
+            var flicker = 0.82f + Mathf.Sin((float)_visualTime * 21f + position.X * 0.04f) * 0.16f;
+            var engineSpacing = visualRadius * (ship.Class is ShipClass.Flagship or ShipClass.Carrier ? 0.34f : 0.18f);
+            DrawColoredPolygon(new Vector2[]
+            {
+                new(-visualRadius * 1.16f, -10),
+                new(-visualRadius * 1.38f - 48 * thrust * flicker, 0),
+                new(-visualRadius * 1.16f, 10)
+            }, new Color(teamColor, 0.12f));
+            foreach (var engineY in new[] { -engineSpacing, engineSpacing })
+            {
+                DrawLine(new(-visualRadius * 1.35f, engineY),
+                    new(-visualRadius * 1.35f - 38 * thrust, engineY),
+                    new(teamColor, 0.28f), 13, true);
+                DrawLine(new(-visualRadius * 1.35f, engineY),
+                    new(-visualRadius * 1.35f - 32 * thrust * flicker, engineY),
+                    new(teamColor, 0.94f), 3.4f, true);
+                DrawCircle(new(-visualRadius * 1.34f, engineY), 3.5f, Colors.White);
+            }
+        }
+        if (_shipTextures.TryGetValue(ship.Class, out var texture))
+        {
+            var rect = new Rect2(-visualRadius * 1.82f, -visualRadius * 0.94f,
+                visualRadius * 3.64f, visualRadius * 1.88f);
+            DrawTextureRect(texture, rect.Grow(4), false, new Color(teamColor, 0.24f));
+            DrawTextureRect(texture, rect, false, new Color(0.82f, 0.9f, 0.96f, 0.98f));
+            DrawLine(new(-visualRadius * 0.72f, 0), new(visualRadius * 0.82f, 0),
+                new Color(teamColor, 0.5f), 1.4f, true);
+            for (var light = -1; light <= 1; light++)
+                DrawCircle(new(visualRadius * (0.25f + light * 0.32f), -visualRadius * 0.28f),
+                    light == 0 ? 2.2f : 1.5f, new Color(teamColor, 0.92f));
+        }
+        else
+        {
+            var hull = CreateHull(ship);
+            DrawColoredPolygon(hull, new Color("17273b"));
+            DrawPolyline(hull.Append(hull[0]).ToArray(), selected ? Colors.White : teamColor,
+                selected ? 3 : 1.7f, true);
+        }
+        DrawSetTransform(_worldDrawOffset, 0);
+
+        if (selected)
+        {
+            var radius = visualRadius + 19;
+            var rotation = (float)_visualTime * 0.72f;
+            for (var segment = 0; segment < 4; segment++)
+            {
+                var start = rotation + segment * Mathf.Pi / 2f;
+                DrawArc(position, radius, start, start + 0.52f, 12, new Color(Colors.White, 0.88f), 2.4f);
+            }
+            var facing = new Vector2(Mathf.Cos((float)ship.Angle), Mathf.Sin((float)ship.Angle));
+            DrawLine(position + facing * radius, position + facing * (radius + 12), Colors.White, 2);
+            DrawCircle(position, radius + 5 + Mathf.Sin((float)_visualTime * 3f) * 2,
+                new Color(Cyan, 0.045f));
+        }
+        if (ship.ShieldRatio > 0.05)
+        {
+            var shieldRadius = visualRadius + 10;
+            var shieldAlpha = (float)(0.08 + ship.ShieldRatio * 0.24);
+            for (var segment = 0; segment < 3; segment++)
+            {
+                var start = (float)_visualTime * 0.18f + segment * Mathf.Tau / 3f;
+                DrawArc(position, shieldRadius, start, start + 0.86f, 20,
+                    new(teamColor, shieldAlpha), 3);
+            }
+        }
+        if (ShouldDrawShipLabel(ship))
+        {
+            DrawCenteredLabel(ship.Name.ToUpperInvariant(), position.X,
+                position.Y - visualRadius - 20, 12, teamColor, 150);
+            DrawBar(new(position.X - 55, position.Y - visualRadius - 9), 110, 4,
+                (float)ship.HullRatio, teamColor);
+        }
+    }
+
+    private bool ShouldDrawShipLabel(Ship ship) =>
+        ship.Team == Team.Player ||
+        ship.Class is ShipClass.Flagship or ShipClass.Carrier ||
+        ship.Id == _simulation.Mission.Objective.TargetId ||
+        ship.Id == _simulation.Mission.Objective.ProtectedShipId ||
+        ship.Id == _simulation.SelectedShip.Order.TargetId;
+
+    private void DrawTargetingOverlay()
+    {
+        var selected = _simulation.SelectedShip;
+        if (!selected.IsAlive) return;
+        var target = _simulation.Ships
+            .Where(ship => ship.IsAlive && ship.Team != selected.Team)
+            .OrderBy(ship => (ship.Position - selected.Position).Length)
+            .FirstOrDefault();
+        if (target is null) return;
+
+        var start = ToVector(selected.Position);
+        var end = ToVector(target.Position);
+        var distance = (float)(target.Position - selected.Position).Length;
+        DrawDashedLine(start, end, new Color(Red, 0.19f), 12, 1.4f);
+        var radius = (float)target.Stats.Radius + 14 + Mathf.Sin((float)_visualTime * 4f) * 2;
+        for (var corner = 0; corner < 4; corner++)
+        {
+            var angle = corner * Mathf.Pi / 2f + Mathf.Pi / 4f;
+            var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+            var tangent = new Vector2(-direction.Y, direction.X);
+            var anchor = end + direction * radius;
+            DrawLine(anchor, anchor - direction * 9 + tangent * 6, new Color(Red, 0.82f), 2);
+            DrawLine(anchor, anchor - direction * 9 - tangent * 6, new Color(Red, 0.82f), 2);
+        }
+        DrawCenteredLabel($"TARGET  {distance:0} m", end.X, end.Y + radius + 18, 10,
+            new Color(Red, 0.82f), 150);
+    }
+
+    private void DrawDashedLine(Vector2 from, Vector2 to, Color color, int segments, float width)
+    {
+        for (var index = 0; index < segments; index += 2)
+        {
+            var a = from.Lerp(to, index / (float)segments);
+            var b = from.Lerp(to, Math.Min(1, (index + 1) / (float)segments));
+            DrawLine(a, b, color, width, true);
+        }
+    }
+
+    private static Vector2[] CreateHull(Ship ship)
+    {
+        var radius = (float)ship.Stats.Radius;
+        var length = ship.Class switch
+        {
+            ShipClass.Flagship or ShipClass.Carrier => radius * 1.55f,
+            ShipClass.Destroyer => radius * 1.45f,
+            _ => radius * 1.3f
+        };
+        var width = ship.Class switch
+        {
+            ShipClass.Carrier => radius * 0.75f,
+            ShipClass.Bomber or ShipClass.Escort => radius * 0.55f,
+            _ => radius * 0.68f
+        };
+        return
+        [
+            new(length, 0), new(radius * 0.35f, -width), new(-length * 0.72f, -width * 0.55f),
+            new(-length, -width * 0.22f), new(-length, width * 0.22f),
+            new(-length * 0.72f, width * 0.55f), new(radius * 0.35f, width)
+        ];
+    }
+
+    private void DrawCombatEvent(CombatEvent combatEvent)
+    {
+        var rawLife = (float)Math.Clamp(combatEvent.RemainingLife / combatEvent.InitialLife, 0, 1);
+        var progress = 1f - rawLife;
+        var life = rawLife;
+        if (_settings.ReduceFlashes) life *= 0.42f;
+        var radius = combatEvent.Type switch
+        {
+            CombatEventType.MuzzleFlash => 7 + (int)(progress * 9),
+            CombatEventType.Impact => 12 + (int)(progress * 24),
+            CombatEventType.Destroyed => 28 + (int)(progress * 72),
+            _ => 12
+        };
+        var color = combatEvent.Type == CombatEventType.Destroyed ? Orange : Cyan;
+        var position = ToVector(combatEvent.Position);
+        DrawArc(position, radius, 0, Mathf.Tau, 48, new(color, life * 0.9f), 4);
+        DrawArc(position, radius * 0.62f, 0, Mathf.Tau, 36, new(Colors.White, life * 0.34f), 2);
+        if (combatEvent.Type == CombatEventType.Destroyed)
+        {
+            DrawCircle(position, radius * 0.45f, new Color(1, 0.45f, 0.12f, life * 0.28f));
+            var seed = position.X * 0.017f + position.Y * 0.031f;
+            for (var particle = 0; particle < 12; particle++)
+            {
+                var angle = seed + particle * Mathf.Tau / 12f;
+                var direction = new Vector2(Mathf.Cos(angle), Mathf.Sin(angle));
+                var inner = position + direction * radius * 0.22f;
+                var outer = position + direction * radius * (0.72f + (particle % 3) * 0.13f);
+                DrawLine(inner, outer, new Color(particle % 2 == 0 ? Colors.White : Orange,
+                    life * 0.72f), particle % 3 == 0 ? 3 : 1.5f, true);
+            }
+        }
+        else if (combatEvent.Type == CombatEventType.Impact)
+        {
+            var rotation = position.X * 0.04f + position.Y * 0.02f;
+            for (var spark = 0; spark < 6; spark++)
+            {
+                var direction = new Vector2(Mathf.Cos(rotation + spark * Mathf.Pi / 3f),
+                    Mathf.Sin(rotation + spark * Mathf.Pi / 3f));
+                DrawLine(position + direction * 4, position + direction * radius * 1.25f,
+                    new Color(Colors.White, life * 0.75f), 1.5f, true);
+            }
+        }
+    }
+
+    private void DrawHud()
+    {
+        DrawBattlefieldFrame();
+        DrawRect(new(0, 0, 1600, 74), new Color(0.004f, 0.03f, 0.07f, 0.95f));
+        DrawLine(new(0, 73), new(1600, 73), new(Cyan, 0.32f));
+        DrawPolyline(new Vector2[] { new(22, 52), new(38, 16), new(54, 52), new(44, 38),
+            new(32, 38), new(22, 52) }, new Color(Cyan, 0.86f), 2.2f, true);
+        DrawLabel("ANDROMEDA", new(68, 31), 24, Colors.White);
+        DrawLabel("FLEET COMMAND", new(70, 54), 15, Cyan);
+        DrawLabel(MissionHeader(_simulation.Mission),
+            new(280, 44), 12, new Color("8bbdd2"), HorizontalAlignment.Center, 210);
+
+        DrawFactionBar(new(520, 18), 245, (float)(_simulation.FleetStrength(Team.Player) /
+            Math.Max(0.01, _simulation.InitialPlayerStrength)),
+            "ANDROMEDA FLEET", Cyan);
+        DrawFactionBar(new(835, 18), 245, (float)(_simulation.FleetStrength(Team.Enemy) /
+            Math.Max(0.01, _simulation.InitialEnemyStrength)),
+            "KETZAL EMPIRE", Red);
+        var totalSeconds = (int)_simulation.ElapsedSeconds;
+        DrawCenteredLabel($"{totalSeconds / 60:00}:{totalSeconds % 60:00}", 800, 40, 18,
+            new Color("e5edf5"), 120);
+        DrawFleetPanel();
+        DrawSelectedPanel();
+        DrawCommandLog();
+        DrawObjective();
+        DrawRadar();
+
+        if (!string.IsNullOrWhiteSpace(_status) && !_commandMode)
+        {
+            DrawPanel(new(510, 87, 580, 38));
+            DrawCenteredLabel(_status, 800, 112, 14, new Color("a0e1f5"), 560);
+        }
+        if (_simulation.Mission.Id == MissionId.FirstCommand && !_showHelp &&
+            (!_tutorial.IsComplete || _tutorialCelebrationTime > 0))
+            DrawTutorialCoach();
+        if (_settings.Subtitles && _audioCaptionTime > 0)
+        {
+            DrawPanel(new(530, 681, 540, 36));
+            DrawCenteredLabel($"♪  {_audioCaption}", 800, 705, 13, Colors.White, 510);
+        }
+        DrawDamageAlert();
+    }
+
+    private void DrawBattlefieldFrame()
+    {
+        var line = new Color(Cyan, 0.19f);
+        DrawLine(new(8, 84), new(8, 248), line, 2);
+        DrawLine(new(8, 84), new(172, 84), line, 2);
+        DrawLine(new(1592, 84), new(1428, 84), line, 2);
+        DrawLine(new(1592, 84), new(1592, 248), line, 2);
+        DrawLine(new(8, 892), new(8, 728), line, 2);
+        DrawLine(new(8, 892), new(172, 892), line, 2);
+        DrawLine(new(1592, 892), new(1428, 892), line, 2);
+        DrawLine(new(1592, 892), new(1592, 728), line, 2);
+        DrawRect(new(0, 74, 10, 826), new Color(0, 0, 0, 0.21f));
+        DrawRect(new(1590, 74, 10, 826), new Color(0, 0, 0, 0.21f));
+    }
+
+    private void DrawDamageAlert()
+    {
+        var ship = _simulation.SelectedShip;
+        if (!ship.IsAlive || ship.HullRatio >= 0.35) return;
+        var pulse = _settings.ReduceFlashes
+            ? 0.09f
+            : 0.08f + (0.07f * (0.5f + 0.5f * Mathf.Sin((float)_visualTime * 4.2f)));
+        var color = new Color(Red, pulse);
+        DrawRect(new(0, 74, 18, 826), color);
+        DrawRect(new(1582, 74, 18, 826), color);
+        DrawRect(new(0, 74, 1600, 12), color);
+        DrawRect(new(0, 888, 1600, 12), color);
+        DrawCenteredLabel("HULL CRITICAL", 800, 100, 12, new Color(Red, 0.82f), 200);
+    }
+
+    private void DrawFactionBar(Vector2 position, float width, float ratio, string text, Color color)
+    {
+        DrawLabel(text, position + new Vector2(0, 11), 12, color);
+        DrawBar(position + new Vector2(0, 20), width, 8, Mathf.Clamp(ratio, 0, 1), color);
+    }
+
+    private void DrawFleetPanel()
+    {
+        var area = new Rect2(20, 104, 250, 192);
+        DrawPanel(area);
+        DrawLabel(_multiplayer?.IsInMatch == true ? "YOUR COMMAND" : "FRIENDLY FLEET",
+            new(34, 126), 13, new Color("a0d2eb"));
+        var fleet = _multiplayer?.IsInMatch == true
+            ? _multiplayer.LocalShipIds.Select(_simulation.FindShip).Where(ship => ship is not null).Cast<Ship>().ToList()
+            : _simulation.Ships.Where(ship => ship.Team == Team.Player).ToList();
+        for (var index = 0; index < fleet.Count; index++)
+        {
+            var ship = fleet[index];
+            var y = 140 + index * 37;
+            if (ship.IsAlive && ship.Id == _simulation.SelectedShip.Id)
+                DrawRect(new(28, y - 11, 234, 32), new Color(0.1f, 0.66f, 0.86f, 0.2f));
+            DrawLabel($"{index + 1}", new(34, y + 4), 11, ship.IsAlive ? Cyan : new Color("666a72"));
+            if (_shipTextures.TryGetValue(ship.Class, out var texture))
+                DrawTextureRect(texture, new Rect2(50, y - 9, 39, 20), false,
+                    ship.IsAlive ? new Color(0.76f, 0.88f, 0.95f, 0.92f) : new Color("555b62"));
+            DrawLabel(ship.Name.ToUpperInvariant(), new(94, y + 4), 11,
+                ship.IsAlive ? Colors.White : new Color("666a72"));
+            DrawBar(new(142, y + 10), 105, 4, (float)ship.HullRatio, ship.IsAlive ? Cyan : Red);
+        }
+    }
+
+    private void DrawSelectedPanel()
+    {
+        var ship = _simulation.SelectedShip;
+        DrawPanel(new(20, 710, 300, 166));
+        DrawLabel(ship.Name.ToUpperInvariant(), new(36, 737), 18, Colors.White);
+        DrawLabel($"{ship.Class.ToString().ToUpperInvariant()}  •  MANUAL CONTROL", new(36, 756), 12,
+            new Color("82beda"));
+        if (_shipTextures.TryGetValue(ship.Class, out var texture))
+        {
+            DrawCircle(new(261, 744), 36, new Color(Cyan, 0.05f));
+            DrawTextureRect(texture, new Rect2(218, 724, 82, 41), false,
+                new Color(0.8f, 0.9f, 0.96f, 0.96f));
+        }
+        DrawMeter(new(36, 778), "HULL", (float)ship.HullRatio, new Color("4be6a3"));
+        DrawMeter(new(36, 804), "SHIELD", (float)ship.ShieldRatio, Cyan);
+        DrawMeter(new(36, 830), "ENERGY", (float)ship.EnergyRatio, new Color("ffc74d"));
+        DrawLabel($"{ship.Order.Type.ToString().ToUpperInvariant()}  •  {(int)ship.Velocity.Length} m/s",
+            new(36, 860), 11, new Color("7dacC6"));
+        var abilityKey = _lastInputWasController
+            ? GamepadButtonLabel(GamepadActionIds.Ability)
+            : BindingLabel(GameActionIds.Ability);
+        var ability = ship.AbilityCooldown <= 0
+            ? $"{abilityKey}  ABILITY READY"
+            : $"{abilityKey}  {Math.Ceiling(ship.AbilityCooldown)}s";
+        DrawLabel(ability, new(205, 860), 11, ship.AbilityCooldown <= 0 ? new Color("ffd065") : new Color("6f8794"));
+    }
+
+    private void DrawMeter(Vector2 position, string label, float ratio, Color color)
+    {
+        DrawLabel(label, position, 11, new Color("90bacf"));
+        DrawBar(position + new Vector2(70, -8), 135, 7, ratio, color);
+    }
+
+    private void DrawCommandLog()
+    {
+        var glow = (float)Math.Clamp(_commandPulseTime / 4.5, 0, 1);
+        DrawPanel(new(345, 720, 740, 156));
+        if (glow > 0)
+        {
+            DrawRect(new(351, 726, 728, 144), new Color(Cyan, 0.025f + glow * 0.045f));
+            DrawLine(new(355, 727), new(1075, 727), new Color(Cyan, 0.42f + glow * 0.32f), 2.5f);
+        }
+        DrawLabel($"TACTICAL COMMAND  •  {BindingLabel(GameActionIds.Command)} TYPE  •  " +
+                  $"{BindingLabel(GameActionIds.Voice)} VOICE",
+            new(361, 747), 12, Cyan);
+        DrawVoiceWaveform(new(374, 796), glow);
+        DrawLabel("ORDER", new(476, 780), 10, new Color("6f9fb5"));
+        DrawLabel(ClipText(_lastIssuedCommand, 73), new(476, 802), 14, Colors.White);
+        DrawLabel("ACKNOWLEDGED", new(476, 825), 10, new Color("4be6a3"));
+        DrawLabel(ClipText(_lastAcknowledgement, 76), new(476, 848), 12, new Color("a9d9e8"));
+    }
+
+    private void DrawVoiceWaveform(Vector2 center, float glow)
+    {
+        DrawCircle(center, 36, new Color(Cyan, 0.045f + glow * 0.04f));
+        DrawArc(center, 36, 0, Mathf.Tau, 40, new Color(Cyan, 0.32f + glow * 0.35f), 1.5f);
+        for (var bar = -5; bar <= 5; bar++)
+        {
+            var pulse = 0.35f + 0.65f * Mathf.Abs(Mathf.Sin((float)_visualTime * (2.8f + glow * 4) + bar * 0.76f));
+            var height = (6 + (5 - Math.Abs(bar)) * 2.4f) * pulse;
+            DrawLine(center + new Vector2(bar * 5, -height), center + new Vector2(bar * 5, height),
+                new Color(Cyan, 0.58f + glow * 0.32f), 2, true);
+        }
+    }
+
+    private void DrawRadar()
+    {
+        var center = new Vector2(1430, 750);
+        const float radius = 92;
+        DrawPanel(new(1302, 624, 276, 252));
+        DrawLabel("TACTICAL RADAR", new(1320, 650), 12, Cyan);
+        DrawLabel("LIVE FLEETSPACE", new(1450, 650), 10, new Color("7299aa"));
+        DrawCircle(center, radius + 8, new Color(0, 0.02f, 0.05f, 0.86f));
+        DrawArc(center, radius, 0, Mathf.Tau, 72, new Color(Cyan, 0.42f), 1.5f);
+        DrawArc(center, radius * 0.66f, 0, Mathf.Tau, 60, new Color(Cyan, 0.15f), 1);
+        DrawArc(center, radius * 0.33f, 0, Mathf.Tau, 48, new Color(Cyan, 0.12f), 1);
+        DrawLine(center - new Vector2(radius, 0), center + new Vector2(radius, 0), new Color(Cyan, 0.1f));
+        DrawLine(center - new Vector2(0, radius), center + new Vector2(0, radius), new Color(Cyan, 0.1f));
+        var sweepAngle = (float)_visualTime * 0.72f;
+        var sweep = new Vector2(Mathf.Cos(sweepAngle), Mathf.Sin(sweepAngle));
+        DrawLine(center, center + sweep * radius, new Color(Cyan, 0.28f), 2);
+        foreach (var ship in _simulation.Ships.Where(candidate => candidate.IsAlive))
+        {
+            var relative = new Vector2(
+                (float)(ship.Position.X / BattleSimulation.WorldWidth - 0.5),
+                (float)(ship.Position.Y / BattleSimulation.WorldHeight - 0.5)) * radius * 1.76f;
+            relative = relative.LimitLength(radius - 6);
+            var color = ship.Team == Team.Player ? Cyan : Red;
+            var size = ship.Class is ShipClass.Flagship or ShipClass.Carrier ? 4.5f : 3f;
+            DrawCircle(center + relative, size + 3, new Color(color, 0.1f));
+            DrawCircle(center + relative, size, new Color(color, 0.92f));
+            if (ship.Id == _simulation.SelectedShip.Id)
+                DrawArc(center + relative, size + 7, 0, Mathf.Tau, 24, Colors.White, 1.5f);
+        }
+        DrawCenteredLabel("N", center.X, center.Y - radius - 8, 9, new Color("8eb7c8"), 18);
+    }
+
+    private void DrawObjective()
+    {
+        DrawPanel(new(1270, 104, 308, 122));
+        DrawPolyline(new Vector2[] { new(1293, 115), new(1302, 119), new(1302, 132),
+            new(1293, 140), new(1284, 132), new(1284, 119), new(1293, 115) }, Cyan, 1.6f, true);
+        DrawLabel("PRIMARY OBJECTIVE", new(1316, 127), 13, Cyan);
+        DrawLabel(_simulation.Mission.Objective.Title.ToUpperInvariant(), new(1286, 154), 14, Colors.White,
+            HorizontalAlignment.Center, 276);
+        var progress = _simulation.ObjectiveProgress;
+        DrawBar(new(1286, 174), 276, 8, (float)progress.ClampedRatio, Red);
+        DrawLabel(progress.Label.ToUpperInvariant(), new(1286, 201), 11, new Color("91b9ce"),
+            HorizontalAlignment.Center, 276);
+    }
+
+    private void DrawOverlay()
+    {
+        if (_showMultiplayer)
+        {
+            DrawMultiplayer();
+        }
+        else if (_showBindings)
+        {
+            DrawBindings();
+        }
+        else if (_showSettings)
+        {
+            DrawSettings();
+        }
+        else if (_showLocalAiSetup)
+        {
+            DrawLocalAiSetup();
+        }
+        else if (_showMissionSelect)
+        {
+            DrawMissionSelect();
+        }
+        else if (_showHelp)
+        {
+            if (_simulation.Mission.Id == MissionId.FirstCommand && !_tutorial.IsComplete)
+            {
+                DrawTutorialBriefing();
+                return;
+            }
+            var mission = _simulation.Mission;
+            DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.78f));
+            DrawPanel(new(320, 90, 960, 720));
+            DrawCenteredLabel(mission.Narrative.Chapter, 800, 145, 14, Cyan, 820);
+            DrawCenteredLabel(
+                MissionHeader(mission),
+                800, 185, 30, Colors.White, 820);
+            DrawCenteredLabel(mission.Subtitle, 800, 216, 15, new Color("99d3e9"), 820);
+            DrawCenteredLabel(mission.Narrative.Speaker, 800, 258, 12, new Color("ffd065"), 820);
+            DrawCenteredLabel(mission.Narrative.BriefingLines[0], 800, 286, 14,
+                new Color("dce7ee"), 860);
+            DrawCenteredLabel(mission.Narrative.BriefingLines[1], 800, 310, 14,
+                new Color("dce7ee"), 860);
+            DrawCenteredLabel($"OBJECTIVE  •  {mission.Objective.Title.ToUpperInvariant()}",
+                800, 350, 15, new Color("ffd065"), 820);
+            DrawCenteredLabel(
+                $"COMMAND {mission.Complexity.Rating}/3  •  {mission.Complexity.Tier}  •  " +
+                $"{mission.Complexity.SimultaneousThreatGroups} THREAT GROUPS",
+                800, 378, 13, Cyan, 820);
+            DrawCenteredLabel(mission.Complexity.TacticalFocus, 800, 402, 12,
+                new Color("9fc5d6"), 860);
+            var controls = new[]
+            {
+                ($"1–4 / {BindingLabel(GameActionIds.SwitchShip)}", "Switch controlled ship"),
+                ($"{BindingLabel(GameActionIds.Thrust)} {BindingLabel(GameActionIds.Reverse)} / " +
+                 $"{BindingLabel(GameActionIds.TurnLeft)} {BindingLabel(GameActionIds.TurnRight)}",
+                    "Thrust and rotate"),
+                (BindingLabel(GameActionIds.Fire), "Fire at nearest target"),
+                (BindingLabel(GameActionIds.Command), "Type a natural-language fleet order"),
+                (BindingLabel(GameActionIds.Ability), "Use the selected ship’s tactical ability"),
+                (BindingLabel(GameActionIds.Voice), "Local voice command adapter")
+            };
+            var y = 455;
+            foreach (var (key, description) in controls)
+            {
+                DrawLabel(key, new(490, y), 14, Cyan);
+                DrawLabel(description, new(700, y), 15, new Color("dce7ee"));
+                y += 34;
+            }
+            DrawCenteredLabel($"Suggested opening: “{mission.RecommendedOrder}”", 800, 690, 14,
+                new Color("ffd065"), 700);
+            DrawCenteredLabel($"Press {BindingLabel(GameActionIds.Help)} to enter the battle", 800, 756, 13,
+                new Color("87b5ca"), 700);
+        }
+        else if (_paused && _simulation.Status == BattleStatus.Active)
+        {
+            var pause = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.Pause)
+                : BindingLabel(GameActionIds.Pause);
+            DrawBanner("PAUSED", $"Press {pause} to return to the battle", Cyan);
+        }
+        else if (_multiplayer?.IsInMatch == true && _simulation.Status != BattleStatus.Active)
+        {
+            var won = LocalPlayerWon();
+            var instruction = _multiplayer.IsHost
+                ? $"Press {BindingLabel(GameActionIds.Restart)} for a rematch • F6 for session controls"
+                : "Waiting for the host to start a rematch • F6 for session controls";
+            DrawBanner(won ? "VICTORY" : "DEFEAT", instruction,
+                won ? new Color("48eba9") : Red);
+        }
+        else if (_simulation.Status == BattleStatus.PlayerVictory)
+        {
+            var index = MissionCatalog.IndexOf(_simulation.Mission.Id);
+            var nextKey = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.NextMission)
+                : BindingLabel(GameActionIds.NextMission);
+            var restart = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.Restart)
+                : BindingLabel(GameActionIds.Restart);
+            var missions = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.Missions)
+                : BindingLabel(GameActionIds.Missions);
+            var next = index + 1 < MissionCatalog.All.Count
+                ? $"Press {nextKey} for the next mission • {restart} to replay • {missions} for mission select"
+                : $"Campaign demo complete • {restart} to replay • {missions} for mission select";
+            DrawStoryOutcome("VICTORY", _simulation.Mission.Narrative.VictoryLines,
+                next, new Color("48eba9"));
+        }
+        else if (_simulation.Status == BattleStatus.EnemyVictory)
+        {
+            var restart = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.Restart)
+                : BindingLabel(GameActionIds.Restart);
+            DrawStoryOutcome("MISSION FAILED", _simulation.Mission.Narrative.FailureLines,
+                $"Press {restart} to regroup and try again", Red);
+        }
+    }
+
+    private void DrawMultiplayer()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.88f));
+        DrawPanel(new(360, 85, 880, 730));
+        DrawCenteredLabel("MULTIPLAYER FLEET LINK", 800, 150, 33, Colors.White, 760);
+        DrawCenteredLabel("One captain hosts the authoritative battle on their machine", 800, 184, 14,
+            Cyan, 760);
+
+        if (_multiplayer is null || _multiplayer.State == MultiplayerSessionState.Offline)
+        {
+            DrawLabel("CAPTAIN NAME", new(515, 302), 11, new Color("8eb8ca"));
+            DrawLabel("HOST ADDRESS", new(515, 392), 11, new Color("8eb8ca"));
+            DrawPanel(new(465, 500, 670, 154));
+            DrawCenteredLabel("H  HOST CO-OP VS BOTS", 800, 545, 16, new Color("48eba9"), 620);
+            DrawCenteredLabel("V  HOST PLAYER VS PLAYER", 800, 584, 16, new Color("ffd065"), 620);
+            DrawCenteredLabel("J  JOIN THE ENTERED ADDRESS", 800, 623, 16, Cyan, 620);
+            DrawCenteredLabel("Direct IP / LAN • UDP 7777 by default • up to four captains", 800, 700, 13,
+                new Color("9bc9dc"), 700);
+            DrawCenteredLabel("F6 or Esc to close", 800, 765, 12, new Color("789bac"), 700);
+            return;
+        }
+
+        if (_multiplayer.State == MultiplayerSessionState.Connecting)
+        {
+            DrawCenteredLabel("CONNECTING…", 800, 400, 31, new Color("ffd065"), 700);
+            DrawCenteredLabel("Establishing an ENet session with the host", 800, 440, 14,
+                new Color("9bc9dc"), 760);
+            DrawCenteredLabel("D disconnects • F6 or Esc closes this panel", 800, 690, 13,
+                new Color("789bac"), 700);
+            return;
+        }
+
+        var lobby = _multiplayer.Lobby;
+        if (lobby is null)
+        {
+            DrawCenteredLabel("WAITING FOR LOBBY STATE…", 800, 420, 22, Cyan, 700);
+            return;
+        }
+
+        var mission = MissionCatalog.Get(lobby.MissionId);
+        DrawCenteredLabel($"{lobby.Mode.ToString().ToUpperInvariant()}  •  {mission.Title.ToUpperInvariant()}",
+            800, 232, 21, lobby.Mode == MultiplayerMode.Cooperative ? new Color("48eba9") : new Color("ffd065"),
+            740);
+        DrawCenteredLabel($"{lobby.Players.Count}/{lobby.MaximumPlayers} CAPTAINS  •  " +
+                          (_multiplayer.IsHost ? $"HOSTING UDP {_multiplayer.Port}" : "CONNECTED TO HOST"),
+            800, 261, 12, new Color("9bc9dc"), 740);
+
+        for (var index = 0; index < lobby.Players.Count; index++)
+        {
+            var player = lobby.Players[index];
+            var y = 320 + index * 82;
+            var teamColor = player.Team == Team.Player ? Cyan : Red;
+            var local = player.PlayerId.Equals(_multiplayer.LocalPlayerId, StringComparison.Ordinal);
+            DrawPanel(new(455, y - 34, 690, 66));
+            DrawLabel(local ? "YOU" : $"P{index + 1}", new(480, y + 5), 12, teamColor);
+            DrawLabel((player.DisplayName + (player.IsHost ? "  ◆ HOST" : string.Empty)).ToUpperInvariant(),
+                new(535, y - 5), 15, Colors.White);
+            var shipNames = player.ShipIds.Select(id => mission.Ships.FirstOrDefault(ship => ship.Id == id)?.Name ?? id);
+            DrawLabel(ClipText(string.Join(" • ", shipNames), 65).ToUpperInvariant(), new(535, y + 19), 11,
+                new Color(teamColor, 0.84f));
+        }
+
+        if (_multiplayer.IsInMatch)
+        {
+            DrawCenteredLabel(_multiplayer.IsHost
+                    ? $"{BindingLabel(GameActionIds.Restart)} starts a synchronized rematch"
+                    : "The host controls rematches",
+                800, 690, 14, new Color("ffd065"), 700);
+            DrawCenteredLabel("D disconnects • F6 or Esc returns to battle", 800, 755, 13,
+                new Color("87b5ca"), 700);
+            return;
+        }
+
+        var canStart = lobby.Players.All(player => player.ShipIds.Count > 0) &&
+                       (lobby.Mode == MultiplayerMode.Cooperative ||
+                        lobby.Players.Any(player => player.Team == Team.Player) &&
+                        lobby.Players.Any(player => player.Team == Team.Enemy));
+        if (_multiplayer.IsHost)
+        {
+            DrawCenteredLabel(canStart ? "ENTER  START MATCH" : "VERSUS NEEDS A SECOND CAPTAIN",
+                800, 674, 16, canStart ? new Color("48eba9") : new Color("ffad55"), 700);
+            DrawCenteredLabel("M toggles co-op / versus • co-op: 1–3 chooses mission • D closes lobby",
+                800, 715, 13, new Color("ffd065"), 760);
+        }
+        else
+        {
+            DrawCenteredLabel("WAITING FOR THE HOST TO START", 800, 690, 16, new Color("ffd065"), 700);
+            DrawCenteredLabel("D disconnects • F6 or Esc closes this panel", 800, 735, 13,
+                new Color("87b5ca"), 700);
+        }
+    }
+
+    private static string MissionHeader(MissionDefinition mission) => mission.Id == MissionId.FleetDuel
+        ? $"FLEET DUEL  •  {mission.Title.ToUpperInvariant()}"
+        : $"MISSION {MissionCatalog.IndexOf(mission.Id) + 1}  •  {mission.Title.ToUpperInvariant()}";
+
+    private void DrawTutorialBriefing()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.84f));
+        DrawPanel(new(270, 135, 1060, 630));
+        DrawCenteredLabel(_simulation.Mission.Narrative.Chapter, 800, 174, 13, Cyan, 900);
+        DrawCenteredLabel("CAPTAIN'S DRILL", 800, 205, 38, Colors.White, 900);
+        DrawCenteredLabel("Four actions. About sixty seconds. Learn by commanding.", 800, 242, 16,
+            Cyan, 900);
+        DrawCenteredLabel(_simulation.Mission.Narrative.BriefingLines[0],
+            800, 278, 13, new Color("c9dce6"), 920);
+        DrawCenteredLabel(_simulation.Mission.Narrative.BriefingLines[1],
+            800, 300, 13, new Color("c9dce6"), 920);
+
+        for (var index = 0; index < TutorialTracker.Steps.Count; index++)
+        {
+            var step = TutorialTracker.Steps[index];
+            var completed = index < _tutorial.CompletedSteps;
+            var active = index == _tutorial.CompletedSteps;
+            var x = 332 + index * 238;
+            var color = completed ? new Color("48eba9") : active ? new Color("ffd065") : Cyan;
+            DrawPanel(new(x, 350, 214, 230));
+            DrawCircle(new(x + 107, 397), 23, new(color, 0.2f));
+            DrawArc(new(x + 107, 397), 23, 0, Mathf.Tau, 36, color, 2);
+            DrawCenteredLabel(completed ? "✓" : $"{index + 1}", x + 107, 405, 18, color, 30);
+            DrawCenteredLabel(step.Title.ToUpperInvariant(), x + 107, 450, 15, Colors.White, 190);
+            DrawCenteredLabel(step.Action switch
+            {
+                TutorialAction.SwitchShip =>
+                    $"{BindingLabel(GameActionIds.SwitchShip)}  /  {GamepadButtonLabel(GamepadActionIds.SwitchShip)}",
+                TutorialAction.ManualControl =>
+                    $"{BindingLabel(GameActionIds.Thrust)}{BindingLabel(GameActionIds.TurnLeft)}" +
+                    $"{BindingLabel(GameActionIds.Reverse)}{BindingLabel(GameActionIds.TurnRight)}  /  STICK",
+                TutorialAction.IssueOrder =>
+                    $"{BindingLabel(GameActionIds.Command)}  /  {GamepadButtonLabel(GamepadActionIds.Voice)}",
+                _ =>
+                    $"{BindingLabel(GameActionIds.Ability)}  /  {GamepadButtonLabel(GamepadActionIds.Ability)}"
+            }, x + 107, 490, 14, color, 190);
+            DrawCenteredLabel(step.Purpose, x + 107, 538, 12, new Color("9fc5d6"), 190);
+        }
+
+        DrawCenteredLabel($"Objective after training: {_simulation.Mission.Objective.Title}", 800, 638, 16,
+            new Color("ffd065"), 900);
+        DrawCenteredLabel(_lastInputWasController ? "Press A or START to deploy" :
+                $"Press {BindingLabel(GameActionIds.Help)} to deploy",
+            800, 700, 18, Colors.White, 900);
+        DrawCenteredLabel("The battle is paused while this briefing is open", 800, 730, 12,
+            new Color("789bac"), 900);
+    }
+
+    private void DrawTutorialCoach()
+    {
+        var flash = (float)Math.Clamp(_tutorialStepFlash, 0, 1);
+        var border = _tutorial.IsComplete ? new Color("48eba9") : new Color("ffd065");
+        DrawStyleBox(new StyleBoxFlat
+        {
+            BgColor = new Color(0.01f, 0.045f, 0.08f, 0.96f),
+            BorderColor = new(border, 0.65f + flash * 0.35f),
+            BorderWidthLeft = 2,
+            BorderWidthTop = 2,
+            BorderWidthRight = 2,
+            BorderWidthBottom = 2,
+            CornerRadiusTopLeft = 14,
+            CornerRadiusTopRight = 14,
+            CornerRadiusBottomLeft = 14,
+            CornerRadiusBottomRight = 14
+        }, new Rect2(430, 132, 740, 104));
+
+        if (_tutorial.IsComplete)
+        {
+            DrawCenteredLabel("CAPTAIN CERTIFIED", 800, 174, 19, border, 690);
+            DrawCenteredLabel("Training complete • Destroy the raider leader", 800, 207, 14,
+                Colors.White, 690);
+            return;
+        }
+
+        var step = _tutorial.CurrentStep!;
+        for (var index = 0; index < TutorialTracker.Steps.Count; index++)
+        {
+            var completed = index < _tutorial.CompletedSteps;
+            var active = index == _tutorial.CompletedSteps;
+            var color = completed ? new Color("48eba9") : active ? border : new Color("405a68");
+            DrawCircle(new(665 + index * 90, 153), active ? 7 : 5, color);
+            if (index + 1 < TutorialTracker.Steps.Count)
+                DrawLine(new(673 + index * 90, 153), new(747 + index * 90, 153),
+                    new(color, 0.45f), 2);
+        }
+        DrawCenteredLabel(step.Title.ToUpperInvariant(), 800, 183, 16, border, 690);
+        DrawCenteredLabel(TutorialPrompt(), 800, 207, 14, Colors.White, 690);
+        DrawCenteredLabel(step.Purpose, 800, 226, 11, new Color("8db6c9"), 690);
+    }
+
+    private void DrawMissionSelect()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.82f));
+        DrawPanel(new(390, 130, 820, 620));
+        DrawCenteredLabel("THE BLACK SUN INCIDENT", 800, 198, 34, Colors.White, 700);
+        DrawCenteredLabel("A three-chapter Andromeda Fleet Command story", 800, 230, 15,
+            new Color("99d3e9"), 700);
+
+        for (var index = 0; index < MissionCatalog.All.Count; index++)
+        {
+            var mission = MissionCatalog.All[index];
+            var unlocked = _progress.IsUnlocked(index);
+            var completed = _progress.IsCompleted(mission.Id);
+            var y = 290 + index * 120;
+            DrawPanel(new(455, y - 35, 690, 92));
+            DrawLabel($"{index + 1}", new(485, y + 10), 28, unlocked ? Cyan : new Color("566a73"));
+            DrawLabel(mission.Title.ToUpperInvariant(), new(545, y - 1), 19,
+                unlocked ? Colors.White : new Color("687983"));
+            DrawLabel($"COMMAND {mission.Complexity.Rating}/3  •  {mission.Complexity.Tier}",
+                new(875, y - 1), 12, unlocked ? new Color("ffd065") : new Color("66727a"),
+                HorizontalAlignment.Right, 235);
+            DrawLabel(unlocked ? mission.Subtitle : "LOCKED — complete the previous mission",
+                new(545, y + 25), 13, unlocked ? new Color("9bc9dc") : new Color("66727a"));
+            if (completed) DrawLabel("COMPLETE", new(1025, y + 25), 12, new Color("48eba9"));
+        }
+
+        DrawCenteredLabel($"Press 1–3 to deploy • {BindingLabel(GameActionIds.Missions)} or Esc to close",
+            800, 690, 14, new Color("ffd065"), 700);
+    }
+
+    private void DrawLocalAiSetup()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.86f));
+        DrawPanel(new(350, 105, 900, 690));
+        DrawCenteredLabel("LOCAL AI CONTROL CENTER", 800, 175, 32, Colors.White, 780);
+        DrawCenteredLabel("Runtime commands stay on this computer", 800, 208, 15, Cyan, 780);
+
+        DrawSetupRow(280, "OFFLINE COMMAND PARSER", true,
+            "Always available — no model, account, or internet required");
+        DrawSetupRow(390, $"OLLAMA  •  {_localAiConfiguration.OllamaModel}",
+            _localAiReadiness.OllamaReachable && _localAiReadiness.OllamaModelInstalled,
+            !_localAiReadiness.OllamaReachable
+                ? "Ollama is not running on 127.0.0.1"
+                : _localAiReadiness.OllamaModelInstalled
+                    ? _localAiConfiguration.PreferGpu == false
+                        ? "Ready • CPU-only mode"
+                        : "Ready • maximum GPU offload with automatic CPU fallback"
+                    : "Service detected; press O to pull the recommended model");
+        DrawSetupRow(500, "WHISPER.CPP VOICE", _localAiReadiness.VoiceReady,
+            _localAiReadiness.VoiceReady
+                ? "whisper-cli and the base English speech model are ready"
+                : _localAiReadiness.WhisperCliFound
+                    ? "whisper-cli found; press W to download the speech model"
+                    : "Bundled runtime not found; source builds can provide whisper-cli on PATH");
+
+        DrawCenteredLabel(_localAiBusy ? "WORKING — this may take several minutes" : _localAiReadiness.Detail,
+            800, 625, 14, _localAiBusy ? new Color("ffd065") : new Color("b9d9e7"), 780);
+        DrawCenteredLabel("O  Install model     G  GPU/CPU mode     W  Speech model     R  Rescan",
+            800, 690, 15, new Color("ffd065"), 780);
+        DrawCenteredLabel("L or Esc to close", 800, 735, 13, new Color("87b5ca"), 780);
+    }
+
+    private void DrawSettings()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.87f));
+        DrawPanel(new(390, 115, 820, 670));
+        DrawCenteredLabel("SETTINGS & ACCESSIBILITY", 800, 185, 31, Colors.White, 700);
+        DrawCenteredLabel("Changes save immediately", 800, 216, 14, Cyan, 700);
+
+        var rows = new (string Key, string Name, string Value)[]
+        {
+            ("A", "Master volume", $"{(int)Math.Round(_settings.MasterVolume * 100)}%"),
+            ("C", "Color-vision palette", SplitPascalCase(_settings.ColorMode.ToString())),
+            ("F", "Reduced flashes", _settings.ReduceFlashes ? "ON" : "OFF"),
+            ("U", "Tactical cue captions", _settings.Subtitles ? "ON" : "OFF"),
+            ("D", "Controller deadzone", $"{_settings.GamepadDeadzone:0.00}")
+        };
+        var y = 290;
+        foreach (var (key, name, value) in rows)
+        {
+            DrawPanel(new(470, y - 33, 660, 72));
+            DrawLabel(key, new(505, y + 8), 17, Cyan);
+            DrawLabel(name, new(555, y + 7), 16, Colors.White);
+            DrawLabel(value.ToUpperInvariant(), new(1000, y + 7), 14, new Color("ffd065"),
+                HorizontalAlignment.Right, 100);
+            y += 86;
+        }
+        DrawCenteredLabel("K  Keyboard controls     •     PAD Y  Controller buttons",
+            800, 684, 14, new Color("ffd065"), 700);
+        DrawCenteredLabel($"Controller: left stick fly • {GamepadButtonLabel(GamepadActionIds.Fire)} fire • " +
+                  $"{GamepadButtonLabel(GamepadActionIds.Ability)} ability • " +
+                  $"{GamepadButtonLabel(GamepadActionIds.SwitchShip)} switch ship",
+            800, 716, 13, new Color("9bc9dc"), 700);
+        DrawCenteredLabel("F10 or Esc to close", 800, 750, 13, new Color("87b5ca"), 700);
+    }
+
+    private void DrawBindings()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.9f));
+        DrawPanel(new(255, 75, 1090, 750));
+        DrawCenteredLabel(_bindingDeviceGamepad ? "CONTROLLER BUTTONS" : "KEYBOARD CONTROLS",
+            800, 140, 31, Colors.White, 900);
+        DrawCenteredLabel("Assignments save immediately • conflicts swap automatically • G / LB switches device",
+            800, 173, 14, Cyan, 900);
+
+        var actions = _bindingDeviceGamepad
+            ? GamepadActions.All.Select(action => (action.Id, action.Label)).ToArray()
+            : GameActions.All.Select(action => (action.Id, action.Label)).ToArray();
+        var rowsPerColumn = _bindingDeviceGamepad ? 4 : 7;
+        var rowSpacing = _bindingDeviceGamepad ? 86 : 64;
+        var firstRowY = _bindingDeviceGamepad ? 250 : 235;
+        for (var index = 0; index < actions.Length; index++)
+        {
+            var action = actions[index];
+            var column = index / rowsPerColumn;
+            var row = index % rowsPerColumn;
+            var x = 315 + column * 500;
+            var y = firstRowY + row * rowSpacing;
+            var selected = index == _bindingSelection;
+            if (selected)
+                DrawRect(new(x - 16, y - (_bindingDeviceGamepad ? 36 : 29), 455,
+                    _bindingDeviceGamepad ? 62 : 48), new Color(0.12f, 0.58f, 0.72f, 0.2f));
+            DrawLabel(action.Label.ToUpperInvariant(), new(x, y), 14,
+                selected ? Colors.White : new Color("b8d5e2"));
+            var binding = _bindingDeviceGamepad
+                ? GamepadButtonLabel(action.Id)
+                : BindingLabel(action.Id);
+            DrawLabel(binding, new(x + 315, y), 15,
+                selected ? new Color("ffd065") : Cyan, HorizontalAlignment.Right, 105);
+        }
+
+        if (_captureBinding)
+        {
+            DrawPanel(new(420, 645, 760, 82));
+            DrawCenteredLabel($"PRESS A {(_bindingDeviceGamepad ? "BUTTON" : "KEY")} FOR " +
+                      actions[_bindingSelection].Label.ToUpperInvariant(),
+                800, 681, 18, new Color("ffd065"), 700);
+            DrawCenteredLabel(_bindingDeviceGamepad
+                    ? "PAD BACK cancels • the Settings button stays reserved"
+                    : "Esc cancels • system and diagnostic keys are reserved",
+                800, 708, 12, new Color("a9c7d5"), 700);
+        }
+        else
+        {
+            DrawCenteredLabel(_bindingDeviceGamepad
+                    ? "D-PAD choose  •  A rebind  •  X default  •  Y reset all"
+                    : "↑/↓ choose  •  Enter rebind  •  Backspace default  •  R reset all",
+                800, 705, 14, new Color("ffd065"), 920);
+        }
+        DrawCenteredLabel(_bindingDeviceGamepad ? "B / BACK returns to settings" : "K or Esc returns to settings",
+            800, 772, 13, new Color("87b5ca"), 900);
+    }
+
+    private void DrawSetupRow(float y, string title, bool ready, string detail)
+    {
+        DrawPanel(new(430, y - 42, 740, 88));
+        DrawCircle(new(474, y), 10, ready ? new Color("48eba9") : new Color("ffb047"));
+        DrawLabel(title, new(505, y - 7), 17, Colors.White);
+        DrawLabel(detail, new(505, y + 22), 13, new Color("9bc9dc"));
+        DrawLabel(ready ? "READY" : "SETUP", new(1070, y + 8), 12,
+            ready ? new Color("48eba9") : new Color("ffb047"), HorizontalAlignment.Center, 70);
+    }
+
+    private void DrawStoryOutcome(string title, IReadOnlyList<string> storyLines, string instruction, Color color)
+    {
+        var mission = _simulation.Mission;
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.82f));
+        DrawPanel(new(280, 155, 1040, 590));
+        DrawCenteredLabel(title, 800, 250, 52, color, 900);
+        DrawCenteredLabel(mission.Narrative.Chapter, 800, 292, 14, Cyan, 900);
+        DrawCenteredLabel(mission.Narrative.Speaker, 800, 334, 12, new Color("ffd065"), 900);
+        DrawCenteredLabel(storyLines[0], 800, 378, 16, Colors.White, 940);
+        DrawCenteredLabel(storyLines[1], 800, 410, 16, Colors.White, 940);
+        DrawCenteredLabel($"OBJECTIVE  •  {mission.Objective.Title.ToUpperInvariant()}",
+            800, 475, 14, color, 900);
+        DrawCenteredLabel(mission.Complexity.TacticalFocus, 800, 508, 13,
+            new Color("9fc5d6"), 900);
+        DrawCenteredLabel(instruction, 800, 675, 13, new Color("87b5ca"), 1000);
+    }
+
+    private void DrawBanner(string title, string subtitle, Color color)
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.78f));
+        DrawCenteredLabel(title, 800, 410, 58, color, 900);
+        DrawCenteredLabel(subtitle, 800, 452, 19, Colors.White, 900);
+    }
+
+    private void DrawPanel(Rect2 rect)
+    {
+        DrawStyleBox(new StyleBoxFlat
+        {
+            BgColor = Panel,
+            BorderColor = new(0.2f, 0.72f, 0.92f, 0.35f),
+            BorderWidthLeft = 1,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 12,
+            CornerRadiusTopRight = 12,
+            CornerRadiusBottomLeft = 12,
+            CornerRadiusBottomRight = 12
+        }, rect);
+        DrawLine(rect.Position + new Vector2(12, 1),
+            rect.Position + new Vector2(rect.Size.X - 12, 1), new Color(Cyan, 0.22f), 1.2f);
+        DrawLine(rect.Position + new Vector2(12, rect.Size.Y - 1),
+            rect.Position + new Vector2(rect.Size.X - 12, rect.Size.Y - 1),
+            new Color(0.25f, 0.45f, 0.58f, 0.08f), 1);
+    }
+
+    private void DrawLabel(string text, Vector2 position, int size, Color color,
+        HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1)
+    {
+        DrawString(ThemeDB.FallbackFont, position, text, alignment, width, size, color);
+    }
+
+    private void DrawCenteredLabel(string text, float centerX, float y, int size, Color color, float width)
+    {
+        DrawLabel(text, new(centerX - width / 2, y), size, color, HorizontalAlignment.Center, width);
+    }
+
+    private static string SplitPascalCase(string value) => string.Concat(value.Select((character, index) =>
+        index > 0 && char.IsUpper(character) ? " " + character : character.ToString()));
+
+    private static string ClipText(string value, int maximumLength) =>
+        value.Length <= maximumLength ? value : value[..(maximumLength - 1)] + "…";
+
+    private void DrawBar(Vector2 position, float width, float height, float ratio, Color color)
+    {
+        DrawRect(new(position, new(width, height)), new Color(1, 1, 1, 0.1f));
+        DrawRect(new(position, new(width * Mathf.Clamp(ratio, 0, 1), height)), color);
+    }
+
+    private void SetStatus(string text)
+    {
+        _status = text;
+        _statusTime = 4.5;
+    }
+
+    private void AddLog(string line)
+    {
+        _log.Enqueue(line);
+        while (_log.Count > 4) _log.Dequeue();
+    }
+
+    private void CreateStars()
+    {
+        var random = new Random(0xAFC2026);
+        for (var index = 0; index < 240; index++)
+        {
+            _stars.Add(new(new(random.Next(1600), random.Next(76, 880)),
+                0.7f + (float)random.NextDouble() * 2.3f,
+                0.25f + (float)random.NextDouble() * 0.7f,
+                random.NextDouble() < 0.42,
+                0.35f + (float)random.NextDouble() * 1.65f,
+                (float)random.NextDouble() * Mathf.Tau));
+        }
+    }
+
+    private void LoadShipArt()
+    {
+        foreach (var shipClass in Enum.GetValues<ShipClass>())
+        {
+            var name = shipClass.ToString().ToLowerInvariant();
+            if (GD.Load<Texture2D>($"res://art/ships/{name}.svg") is { } texture)
+                _shipTextures[shipClass] = texture;
+        }
+    }
+
+    private static Vector2 ToVector(Vector2D value) => new((float)value.X, (float)value.Y);
+    private readonly record struct Star(
+        Vector2 Position,
+        float Size,
+        float Alpha,
+        bool Blue,
+        float Depth,
+        float Phase);
+}
