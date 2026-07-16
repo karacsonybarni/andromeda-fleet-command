@@ -105,6 +105,7 @@ public sealed partial class Main : Node2D
     private bool _multiplayerSmokeHost;
     private bool _multiplayerSmokeClient;
     private bool _multiplayerSmokePassed;
+    private bool _multiplayerSmokeSnapshotSeen;
 
     public override void _Ready()
     {
@@ -772,6 +773,7 @@ public sealed partial class Main : Node2D
         RefreshMultiplayerControlVisibility();
         if (_multiplayerSmokeHost && !lobby.MatchStarted && lobby.Players.Count >= 2)
         {
+            GD.Print($"AFC_MP_HOST_JOINED players={lobby.Players.Count}");
             var result = _multiplayer!.StartMatch();
             if (!result.Accepted) throw new InvalidOperationException(result.Message);
         }
@@ -797,6 +799,7 @@ public sealed partial class Main : Node2D
         SetStatus("Fleet link synchronized");
         if (_multiplayerSmokeHost || _multiplayerSmokeClient)
         {
+            GD.Print($"AFC_MP_MATCH_STARTED role={(_multiplayerSmokeHost ? "host" : "client")}");
             var command = _rules.Parse("All ships, attack the enemy flagship").Command!;
             var admission = _multiplayer!.SendCommand(command, _simulation.SelectedShip.Id, _simulation);
             if (!admission.Accepted) throw new InvalidOperationException(admission.Message);
@@ -811,6 +814,12 @@ public sealed partial class Main : Node2D
         EnsureLocalShipSelected();
         if ((_multiplayerSmokeHost || _multiplayerSmokeClient) && !_multiplayerSmokePassed)
         {
+            if (!_multiplayerSmokeSnapshotSeen)
+            {
+                _multiplayerSmokeSnapshotSeen = true;
+                GD.Print($"AFC_MP_SNAPSHOT role={(_multiplayerSmokeHost ? "host" : "client")}" +
+                         $" tick={snapshot.ServerTick}");
+            }
             var checksum = SimulationChecksum.Compute(_simulation);
             if (!checksum.Equals(snapshot.Checksum, StringComparison.Ordinal))
                 throw new InvalidOperationException("Multiplayer snapshot checksum did not recover the client state");

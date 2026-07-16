@@ -36,11 +36,17 @@ if ! grep -q "AFC_MP_HOST_READY" "$host_log"; then
   exit 1
 fi
 
+set +e
 HOME="$client_home" timeout 25s "$game" "${args[@]}" --multiplayer-smoke-client >"$client_log" 2>&1
+client_status=$?
 wait "$host_pid"
+host_status=$?
+set -e
 
 sed -n '1,240p' "$host_log"
 sed -n '1,240p' "$client_log"
+test "$host_status" -eq 0
+test "$client_status" -eq 0
 grep -q "AFC_MP_HOST_PASS" "$host_log"
 grep -q "AFC_MP_CLIENT_PASS" "$client_log"
 ! grep -qE "ERROR:|Unhandled exception|InvalidOperationException" "$host_log" "$client_log"
