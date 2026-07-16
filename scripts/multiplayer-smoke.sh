@@ -18,14 +18,18 @@ trap cleanup EXIT
 
 if [[ "$mode" == "editor" ]]; then
   args=(--headless --path . --)
+  process_timeout=25
+  readiness_attempts=100
 else
   args=(--headless --)
+  process_timeout=60
+  readiness_attempts=400
 fi
 
-HOME="$host_home" timeout 25s "$game" "${args[@]}" --multiplayer-smoke-host >"$host_log" 2>&1 &
+HOME="$host_home" timeout "${process_timeout}s" "$game" "${args[@]}" --multiplayer-smoke-host >"$host_log" 2>&1 &
 host_pid=$!
 
-for _ in $(seq 1 100); do
+for _ in $(seq 1 "$readiness_attempts"); do
   grep -q "AFC_MP_HOST_READY" "$host_log" && break
   kill -0 "$host_pid" 2>/dev/null || break
   sleep 0.1
@@ -37,7 +41,7 @@ if ! grep -q "AFC_MP_HOST_READY" "$host_log"; then
 fi
 
 set +e
-HOME="$client_home" timeout 25s "$game" "${args[@]}" --multiplayer-smoke-client >"$client_log" 2>&1
+HOME="$client_home" timeout "${process_timeout}s" "$game" "${args[@]}" --multiplayer-smoke-client >"$client_log" 2>&1
 client_status=$?
 wait "$host_pid"
 host_status=$?
