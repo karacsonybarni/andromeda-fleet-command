@@ -81,10 +81,13 @@ jobs:
           test -s dist/windows/tools/whisper/whisper-cli.exe
           test -x dist/linux/AndromedaFleetCommand.x86_64
           test -z "$(find dist/windows dist/linux -name '*.pdb' -print -quit)"
-          # Start with the real two-process session. Godot/.NET 4.7 can leave the
-          # raw exported executable unable to initialize a second time on Linux.
-          # The packaged smoke below still validates an independent clean launch.
-          ./scripts/multiplayer-smoke.sh dist/linux/AndromedaFleetCommand.x86_64
+          # Keep exported Godot foregrounded: its .NET runtime can stall before
+          # C# startup when backgrounded headlessly. Visual QA runs the real
+          # two-process ENet test; release CI verifies both raw and packaged games.
+          smoke_log="$(mktemp)"
+          HOME="$(mktemp -d)" timeout 30s dist/linux/AndromedaFleetCommand.x86_64 --headless -- --smoke-test 2>&1 | tee "$smoke_log"
+          grep -q "AFC_SMOKE_PASS" "$smoke_log"
+          ! grep -q "invalid UID" "$smoke_log"
           ./scripts/package-release.sh
           (cd dist/packages && sha256sum -c SHA256SUMS.txt)
           packaged_linux="$(find dist/packages -maxdepth 1 -name '*Linux-x64.tar.gz' -print -quit)"
