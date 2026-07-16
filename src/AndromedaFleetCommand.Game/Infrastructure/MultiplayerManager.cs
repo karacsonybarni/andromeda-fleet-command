@@ -354,7 +354,7 @@ public sealed partial class MultiplayerManager : Node
         MatchStarted?.Invoke(start);
     }
 
-    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered,
+    [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable,
         TransferChannel = 2)]
     private void ReceiveSnapshotRpc(string payload)
     {

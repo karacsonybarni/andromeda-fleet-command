@@ -852,7 +852,11 @@ public sealed partial class Main : Node2D
                 var role = _multiplayerSmokeHost ? "HOST" : "CLIENT";
                 GD.Print($"AFC_MP_{role}_PASS mode={_multiplayerSmokeMode}" +
                          $" tick={snapshot.ServerTick} ships={_multiplayer!.LocalShipIds.Count}");
-                GetTree().Quit();
+                Callable.From(() =>
+                {
+                    _multiplayer?.Close(false);
+                    GetTree().Quit();
+                }).CallDeferred();
             }
         }
     }

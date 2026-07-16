@@ -69,3 +69,4 @@ test "$client_status" -eq 0
 grep -q "AFC_MP_HOST_PASS mode=$expected_mode" "$host_log"
 grep -q "AFC_MP_CLIENT_PASS mode=$expected_mode" "$client_log"
 ! grep -qE "ERROR:|Unhandled exception|InvalidOperationException" "$host_log" "$client_log"
+! grep -qE "above the MTU|higher packet loss" "$host_log" "$client_log"
