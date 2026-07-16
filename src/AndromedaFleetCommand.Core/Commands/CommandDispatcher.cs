@@ -8,6 +8,24 @@ public sealed class CommandDispatcher
     public string Dispatch(FleetCommand command, BattleSimulation simulation)
     {
         var subjects = ResolveSubjects(command.ShipSelector, simulation);
+        return DispatchToSubjects(command, subjects, simulation);
+    }
+
+    public string DispatchToShip(
+        string shipId,
+        OrderType action,
+        string? targetSelector,
+        Vector2D? destination,
+        BattleSimulation simulation)
+    {
+        var ship = simulation.FindShip(shipId);
+        var subjects = ship is { IsAlive: true } ? new List<Ship> { ship } : [];
+        return DispatchToSubjects(new(shipId, action, targetSelector, destination), subjects, simulation);
+    }
+
+    private static string DispatchToSubjects(FleetCommand command, List<Ship> subjects,
+        BattleSimulation simulation)
+    {
         if (subjects.Count == 0) return $"No available ship matched “{command.ShipSelector}”";
 
         var target = ResolveTarget(command, subjects[0], simulation);
@@ -20,7 +38,7 @@ public sealed class CommandDispatcher
         {
             var destination = command.Destination;
             if (command.Action == OrderType.Defend && target is not null) destination = target.Position;
-            if (command.Action == OrderType.FormUp && destination is null) destination = simulation.SelectedShip.Position;
+            if (command.Action == OrderType.FormUp && destination is null) destination = subjects[0].Position;
             ship.Order = new(command.Action, target?.Id, destination);
         }
 
@@ -45,7 +63,9 @@ public sealed class CommandDispatcher
     private static Ship? ResolveTarget(FleetCommand command, Ship subject, BattleSimulation simulation)
     {
         if (!NeedsTarget(command.Action)) return null;
-        var desiredTeam = command.Action == OrderType.Defend ? Team.Player : Team.Enemy;
+        var desiredTeam = command.Action == OrderType.Defend
+            ? subject.Team
+            : subject.Team == Team.Player ? Team.Enemy : Team.Player;
         var candidates = simulation.Ships
             .Where(ship => ship.IsAlive && ship.Team == desiredTeam && ship.Id != subject.Id)
             .ToList();

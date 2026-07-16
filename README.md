@@ -47,6 +47,8 @@ build.
 - Deterministic input replays with final-state checksum verification
 - Built-in three-mission simulation benchmark and structured GitHub feedback forms
 - Optional GodotSteam achievement adapter and deterministic authoritative-session core
+- Host-on-your-PC multiplayer for up to four captains: cooperative missions against bots or a balanced
+  Andromeda-versus-Ketzal Fleet Duel, with bot takeover when a captain disconnects
 - Tagged CI workflow for checksummed Windows and Linux demo packages
 - Layered procedural stereo soundscape with varied weapon, impact, destruction, ability, alert,
   victory, and defeat cues (no licensed sample dependencies)
@@ -114,6 +116,7 @@ then Y for controller buttons. Conflicting assignments swap and save immediately
 - M: mission selection
 - N: next mission after victory
 - L: local AI and voice setup
+- F6: multiplayer host/join/session panel
 - F10: settings and accessibility
 - F7: run the simulation benchmark
 - F8: open player feedback
@@ -129,6 +132,23 @@ All ships, attack the enemy flagship
 Destroyer Three, retreat
 Flagship, move north
 ~~~
+
+### Multiplayer
+
+Press **F6** from the game, enter a captain name, then:
+
+- press **H** to host a cooperative battle against bots;
+- press **V** to host the balanced player-versus-player Fleet Duel; or
+- enter the host's address and press **J** to join.
+
+The host chooses the co-op mission with **1–3**, toggles co-op/PvP with **M**, and starts with
+**Enter**. The host machine runs the authoritative simulation; each captain receives one or more ships,
+can fly them directly, and can issue orders to their assigned command. If a client leaves, deterministic
+pilots immediately resume those ships.
+
+LAN play works with the host's local IP. Internet play currently requires the host to forward **UDP 7777**
+and share their public IP; do not send sensitive information through the game protocol. Steam lobbies,
+invitations, and relay transport remain future work. See [docs/MULTIPLAYER.md](docs/MULTIPLAYER.md).
 
 ## Optional local AI
 

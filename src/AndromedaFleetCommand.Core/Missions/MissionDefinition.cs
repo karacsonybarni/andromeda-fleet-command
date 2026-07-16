@@ -6,7 +6,8 @@ public enum MissionId
 {
     FirstCommand,
     BrokenShield,
-    BlackSun
+    BlackSun,
+    FleetDuel
 }
 
 public enum MissionObjectiveKind

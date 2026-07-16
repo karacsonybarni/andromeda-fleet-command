@@ -38,8 +38,16 @@ var tests = new (string Name, Action Body)[]
     ("Recorded battles replay to the same checksum", RecordedBattlesReplayDeterministically),
     ("Replay files persist and recover safely", ReplayFilesPersistSafely),
     ("Simulation checksum detects state changes", SimulationChecksumDetectsChanges),
+    ("Fleet Duel is balanced for versus play", FleetDuelIsBalanced),
+    ("Cooperative lobby partitions allied ships", CooperativeLobbyPartitionsAlliedShips),
+    ("Versus lobby assigns opposing fleets", VersusLobbyAssignsOpposingFleets),
+    ("Multiplayer wire codec rejects malformed payloads", MultiplayerWireCodecRejectsMalformedPayloads),
     ("Authoritative session rejects unauthorized commands", AuthoritativeSessionRejectsUnauthorizedCommands),
     ("Authoritative session applies owned commands", AuthoritativeSessionAppliesOwnedCommands),
+    ("Authoritative session accepts enemy-team captains", AuthoritativeSessionAcceptsEnemyTeamCaptains),
+    ("Authoritative session applies manual control and abilities", AuthoritativeSessionAppliesControlAndAbilities),
+    ("Authoritative snapshots recover divergent clients", AuthoritativeSnapshotsRecoverDivergentClients),
+    ("Disconnected captains release manual control", DisconnectedCaptainsReleaseManualControl),
     ("Authoritative sessions remain deterministic", AuthoritativeSessionsRemainDeterministic)
 };
 
@@ -752,6 +760,80 @@ static void SimulationChecksumDetectsChanges()
     True(!before.Equals(after, StringComparison.Ordinal), "Checksum changes with simulation state");
 }
 
+static void FleetDuelIsBalanced()
+{
+    var mission = MissionCatalog.FleetDuel;
+    var player = mission.Ships.Where(ship => ship.Team == Team.Player).ToArray();
+    var enemy = mission.Ships.Where(ship => ship.Team == Team.Enemy).ToArray();
+    Equal(4, player.Length, "Fleet Duel has four Andromeda ships");
+    Equal(4, enemy.Length, "Fleet Duel has four Ketzal ships");
+    True(player.Select(ship => ship.Class).Order().SequenceEqual(enemy.Select(ship => ship.Class).Order()),
+        "Fleet Duel mirrors ship classes");
+    Equal(MissionId.FleetDuel, MissionCatalog.Get(MissionId.FleetDuel).Id,
+        "Fleet Duel resolves outside the campaign catalog");
+}
+
+static void CooperativeLobbyPartitionsAlliedShips()
+{
+    var lobby = new FleetLobby("1", "Host", MultiplayerMode.Cooperative);
+    True(lobby.TryAddPlayer("2", "Wing Captain").Accepted, "Second co-op captain joins");
+    True(lobby.SetCooperativeMission(MissionId.BlackSun).Accepted, "Host chooses a campaign mission");
+    var snapshot = lobby.Snapshot();
+    True(snapshot.Players.All(player => player.Team == Team.Player), "Co-op captains share one team");
+    var assigned = snapshot.Players.SelectMany(player => player.ShipIds).ToArray();
+    var expected = MissionCatalog.Get(MissionId.BlackSun).Ships
+        .Where(ship => ship.Team == Team.Player).Select(ship => ship.Id).ToArray();
+    Equal(expected.Length, assigned.Length, "Every allied ship is assigned");
+    Equal(expected.Length, assigned.Distinct(StringComparer.Ordinal).Count(), "Allied ownership is unique");
+    True(expected.All(assigned.Contains), "Every mission ally belongs to a captain");
+    var (result, session) = lobby.StartMatch();
+    True(result.Accepted && session is not null, "Co-op lobby starts");
+}
+
+static void VersusLobbyAssignsOpposingFleets()
+{
+    var lobby = new FleetLobby("1", "Blue Captain", MultiplayerMode.Versus);
+    True(!lobby.IsStartable, "Versus waits for an opponent");
+    True(lobby.TryAddPlayer("2", "Red Captain").Accepted, "Opponent joins");
+    True(lobby.IsStartable, "Versus starts with both teams represented");
+    var snapshot = lobby.Snapshot();
+    Equal(MissionId.FleetDuel, snapshot.MissionId, "Versus uses the balanced duel");
+    Equal(Team.Player, snapshot.Players[0].Team, "Host leads Andromeda");
+    Equal(Team.Enemy, snapshot.Players[1].Team, "Opponent leads Ketzal");
+    Equal(4, snapshot.Players[0].ShipIds.Count, "Host receives a full fleet");
+    Equal(4, snapshot.Players[1].ShipIds.Count, "Opponent receives a full fleet");
+    var (result, session) = lobby.StartMatch();
+    True(result.Accepted && session is not null, "Versus lobby starts");
+    Equal(Team.Enemy, session!.AssignedTeam("2")!.Value, "Server records enemy-team ownership");
+}
+
+static void MultiplayerWireCodecRejectsMalformedPayloads()
+{
+    var lobby = new FleetLobby("1", "Host", MultiplayerMode.Cooperative).Snapshot();
+    var payload = MultiplayerWire.Serialize(lobby);
+    True(MultiplayerWire.TryDeserialize<FleetLobbySnapshot>(payload, out var decoded) && decoded is not null,
+        "Lobby payload round-trips");
+    Equal(lobby.MissionId, decoded!.MissionId, "Mission survives wire encoding");
+    Equal(lobby.Players[0].DisplayName, decoded.Players[0].DisplayName, "Player survives wire encoding");
+    True(!MultiplayerWire.TryDeserialize<FleetLobbySnapshot>("{broken", out _),
+        "Malformed JSON is rejected");
+    True(!MultiplayerWire.TryDeserialize<FleetLobbySnapshot>(
+            new string('x', MultiplayerWire.MaximumPayloadCharacters + 1), out _),
+        "Oversized payload is rejected");
+
+    var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 441);
+    var authoritative = session.Snapshot();
+    var snapshotPayload = MultiplayerWire.Serialize(authoritative);
+    True(!snapshotPayload.Contains("Normalized", StringComparison.Ordinal),
+        "Computed vector properties stay off the wire");
+    True(MultiplayerWire.TryDeserialize<AuthoritativeSnapshot>(snapshotPayload, out var decodedSnapshot) &&
+         decodedSnapshot is not null, "A complete authoritative snapshot round-trips through JSON");
+    var recovered = new BattleSimulation(MissionId.FleetDuel, 441);
+    recovered.ApplyFrame(decodedSnapshot!.Frame);
+    Equal(authoritative.Checksum, SimulationChecksum.Compute(recovered),
+        "The serialized snapshot recovers the authoritative checksum");
+}
+
 static void AuthoritativeSessionRejectsUnauthorizedCommands()
 {
     var session = new AuthoritativeFleetSession(MissionId.BlackSun, 44);
@@ -778,6 +860,68 @@ static void AuthoritativeSessionAppliesOwnedCommands()
         "Accepted command reaches the simulation");
     Equal("enemy-flagship", session.Simulation.FindShip("player-frigate")!.Order.TargetId,
         "Server resolves the target");
+}
+
+static void AuthoritativeSessionAcceptsEnemyTeamCaptains()
+{
+    var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 47);
+    session.AssignPlayer("ketzal", "enemy-frigate");
+    var command = new NetworkFleetCommand(1, 0, "ketzal", "enemy-frigate",
+        OrderType.Attack, "flagship");
+    True(session.Submit(command).Accepted, "Enemy-team order is admitted");
+    session.Step();
+    Equal("player-flagship", session.Simulation.FindShip("enemy-frigate")!.Order.TargetId,
+        "Enemy-team target resolution points at Andromeda");
+}
+
+static void AuthoritativeSessionAppliesControlAndAbilities()
+{
+    var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 48);
+    session.AssignPlayer("captain", "player-frigate");
+    var ship = session.Simulation.FindShip("player-frigate")!;
+    var start = ship.Position;
+    True(session.SubmitControl(new(1, 0, "captain", ship.Id,
+        new(true, false, false, false, false))).Accepted, "Manual input is admitted");
+    for (var tick = 0; tick < 20; tick++) session.Step();
+    True(ship.Position.DistanceTo(start) > 0.1, "Manual thrust moves the owned ship");
+    True(session.SubmitControl(new(2, session.ServerTick, "captain", ship.Id,
+        ManualInput.None, ActivateAbility: true)).Accepted, "Ability input is admitted");
+    session.Step();
+    True(ship.AbilityCooldown > 0, "Owned ship ability activates on the server");
+    True(!session.Submit(new(2, session.ServerTick, "captain", ship.Id, OrderType.Hold)).Accepted,
+        "Control and order packets share duplicate protection");
+}
+
+static void AuthoritativeSnapshotsRecoverDivergentClients()
+{
+    var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 49);
+    session.AssignPlayer("captain", "player-destroyer");
+    session.SubmitControl(new(1, 0, "captain", "player-destroyer",
+        new(true, false, false, true, true)));
+    AuthoritativeSnapshot snapshot = session.Snapshot();
+    for (var tick = 0; tick < 25; tick++) snapshot = session.Step();
+
+    var client = new BattleSimulation(MissionId.FirstCommand, 999);
+    client.Update(BattleSimulation.FixedStep);
+    client.ApplyFrame(snapshot.Frame);
+    Equal(snapshot.Checksum, SimulationChecksum.Compute(client), "Snapshot restores the authoritative checksum");
+    Equal(snapshot.Status, client.Status, "Snapshot restores battle status");
+    Equal(snapshot.Frame.Projectiles.Count, client.Projectiles.Count, "Snapshot restores projectiles");
+}
+
+static void DisconnectedCaptainsReleaseManualControl()
+{
+    var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 50);
+    session.AssignPlayer("captain", "player-frigate");
+    session.SubmitControl(new(1, 0, "captain", "player-frigate",
+        new(true, false, false, false, false)));
+    session.Step();
+    True(session.Simulation.FindShip("player-frigate")!.IsManuallyControlled,
+        "Connected captain has the helm");
+    True(session.UnassignPlayer("captain"), "Captain is removed");
+    session.Step();
+    True(!session.Simulation.FindShip("player-frigate")!.IsManuallyControlled,
+        "Disconnected helm returns to the deterministic pilot");
 }
 
 static void AuthoritativeSessionsRemainDeterministic()

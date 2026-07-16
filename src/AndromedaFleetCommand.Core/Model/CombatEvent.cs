@@ -10,13 +10,14 @@ public enum CombatEventType
 
 public sealed class CombatEvent
 {
-    public CombatEvent(CombatEventType type, Vector2D position, string? message, double life)
+    public CombatEvent(CombatEventType type, Vector2D position, string? message, double life,
+        double? initialLife = null)
     {
         Type = type;
         Position = position;
         Message = message;
         RemainingLife = life;
-        InitialLife = life;
+        InitialLife = initialLife ?? life;
     }
 
     public CombatEventType Type { get; }

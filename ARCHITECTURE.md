@@ -81,11 +81,19 @@ working.
 
 ## Multiplayer strategy
 
-The multiplayer model is server-authoritative. The implemented session core
-accepts commands only for assigned ships, rejects duplicate sequences and
-out-of-window ticks, advances the fixed-step simulation, and emits checksummed
-snapshots. Production transport, Steam lobbies/relay, reconnection, and
-adversarial security testing remain outside the pure simulation layer.
+The multiplayer model is host-authoritative. `FleetLobby` assigns each captain
+one team and a disjoint set of ships; `AuthoritativeFleetSession` accepts input
+only for those ships, bounds payloads and pending work, rejects duplicate
+sequences and out-of-window ticks, advances the fixed-step simulation, and
+emits complete checksummed recovery snapshots.
+
+`MultiplayerManager` is the Godot-only ENet adapter. It maps untrusted network
+peers to server-owned player IDs, sends intent to the host over separate
+control/snapshot channels, and applies snapshots on clients. The pure core has
+no ENet or Steam dependency. A future Steam transport can replace discovery and
+connectivity while retaining the same lobby/session protocol. Steam
+lobbies/relay, host migration, reconnection, and adversarial Internet soak
+testing remain release work.
 
 ## Steam strategy
 

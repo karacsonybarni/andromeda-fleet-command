@@ -4,6 +4,54 @@ namespace AndromedaFleetCommand.Core.Missions;
 
 public static class MissionCatalog
 {
+    public static MissionDefinition FleetDuel { get; } = new(
+        MissionId.FleetDuel,
+        "Fleet Duel",
+        "Balanced multiplayer engagement",
+        "Two command crews enter a mirrored fleet engagement. Break the opposing flagship while preserving your own.",
+        "All ships, attack the enemy flagship",
+        0xAFC4004,
+        [
+            Player("player-flagship", "Andromeda Flagship", ShipClass.Flagship, 250, 450),
+            Player("player-carrier", "Andromeda Carrier", ShipClass.Carrier, 220, 250),
+            Player("player-frigate", "Andromeda Frigate", ShipClass.Frigate, 340, 335),
+            Player("player-destroyer", "Andromeda Destroyer", ShipClass.Destroyer, 280, 640),
+            Enemy("enemy-flagship", "Ketzal Flagship", ShipClass.Flagship, 1350, 450),
+            Enemy("enemy-carrier", "Ketzal Carrier", ShipClass.Carrier, 1380, 250),
+            Enemy("enemy-frigate", "Ketzal Frigate", ShipClass.Frigate, 1260, 335),
+            Enemy("enemy-destroyer", "Ketzal Destroyer", ShipClass.Destroyer, 1320, 640)
+        ],
+        [
+            new("player-carrier", OrderType.Defend, "player-flagship"),
+            new("player-frigate", OrderType.Intercept, "enemy-frigate"),
+            new("player-destroyer", OrderType.Attack, "enemy-flagship"),
+            new("enemy-carrier", OrderType.Defend, "enemy-flagship"),
+            new("enemy-frigate", OrderType.Intercept, "player-frigate"),
+            new("enemy-destroyer", OrderType.Attack, "player-flagship")
+        ],
+        new(MissionObjectiveKind.DestroyTarget,
+            "Destroy the opposing flagship",
+            "Break the opposing command ship while preserving your flagship.",
+            TargetId: "enemy-flagship",
+            ProtectedShipId: "player-flagship"),
+        new(
+            "MULTIPLAYER  •  FLEET DUEL",
+            "HOST-AUTHORITATIVE ENGAGEMENT",
+            [
+                "Two player-led fleets have entered weapons range.",
+                "Coordinate your assigned hulls and destroy the opposing flagship."
+            ],
+            [
+                "The opposing flagship is disabled and its fleet is withdrawing.",
+                "Your command crew controls the battlespace."
+            ],
+            [
+                "Your flagship is disabled and command authority is lost.",
+                "The opposing fleet controls the battlespace."
+            ]),
+        new(3, "PLAYER VERSUS PLAYER", 3,
+            "Coordinate a balanced four-ship fleet against another command crew."));
+
     public static IReadOnlyList<MissionDefinition> All { get; } =
     [
         new(
@@ -161,7 +209,7 @@ public static class MissionCatalog
     ];
 
     public static MissionDefinition Get(MissionId id) =>
-        All.First(mission => mission.Id == id);
+        id == MissionId.FleetDuel ? FleetDuel : All.First(mission => mission.Id == id);
 
     public static int IndexOf(MissionId id) =>
         All.Select((mission, index) => (mission, index))
