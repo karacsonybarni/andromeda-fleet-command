@@ -53,6 +53,33 @@ public sealed class Ship
     internal void DrainEnergy(double amount) => Energy = Math.Max(0, Energy - amount);
     internal void ActivateOverdrive(double seconds) => OverdriveRemaining = Math.Max(OverdriveRemaining, seconds);
 
+    internal void ApplyAuthoritativeState(
+        Vector2D position,
+        Vector2D velocity,
+        double angle,
+        double hull,
+        double shield,
+        double energy,
+        double weaponCooldown,
+        double abilityCooldown,
+        double overdriveRemaining,
+        ShipOrder order,
+        bool isManuallyControlled)
+    {
+        Position = position;
+        Velocity = velocity;
+        Angle = angle;
+        Hull = Math.Clamp(hull, 0, Stats.MaxHull);
+        Shield = Math.Clamp(shield, 0, Stats.MaxShield);
+        Energy = Math.Clamp(energy, 0, 100);
+        WeaponCooldown = Math.Max(0, weaponCooldown);
+        AbilityCooldown = Math.Max(0, abilityCooldown);
+        OverdriveRemaining = Math.Max(0, overdriveRemaining);
+        Order = order;
+        IsManuallyControlled = isManuallyControlled;
+        NormalizeAngle();
+    }
+
     internal void NormalizeAngle()
     {
         while (Angle > Math.PI) Angle -= Math.PI * 2;

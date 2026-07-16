@@ -41,7 +41,8 @@
 - [ ] Steam lobbies, invitations, Cloud synchronization, and Workshop
 - [x] Deterministic input recording and final-state replay checksum validation
 - [x] Authoritative command ownership, sequence, and tick-window validation core
-- [ ] Server-authoritative multiplayer transport, lobbies, and desync recovery
+- [x] Direct-IP ENet host/client transport, in-game lobbies, co-op vs bots, balanced PvP, and snapshot recovery
+- [ ] Steam lobby/invitation/relay adapter, host migration, reconnection, and adversarial network soak testing
 - [x] Persistent settings, gamepad flight/combat, color-vision palettes, captions, and reduced flashes
 - [x] Persistent conflict-safe keyboard action rebinding with dynamic HUD and tutorial prompts
 - [x] Persistent controller combat/navigation button remapping with controller-only navigation

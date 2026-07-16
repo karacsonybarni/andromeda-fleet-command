@@ -36,7 +36,9 @@ Before uploading to Steam:
 5. Configure Steam Cloud for Godot's user-data save, replay, settings, and log paths.
 6. Create depots and upload through SteamPipe.
 
-The authoritative multiplayer simulation validates ownership, duplicate
-sequences, and tick windows. A production network transport, Steam lobbies,
-relay hosting, reconnection, and adversarial security testing remain separate
-release work.
+The playable direct-IP ENet multiplayer mode lets one player's machine host an
+authoritative co-op or PvP match. It validates ownership, duplicate sequences,
+tick windows, payload and queue limits, and recovers clients with complete
+checksummed snapshots. Steam lobbies, invitations, relay hosting, host
+migration, reconnection, and adversarial Internet soak testing remain separate
+release work. The direct transport is documented in [MULTIPLAYER.md](MULTIPLAYER.md).

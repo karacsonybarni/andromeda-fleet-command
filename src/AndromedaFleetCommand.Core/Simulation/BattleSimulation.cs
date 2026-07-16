@@ -12,8 +12,8 @@ public sealed class BattleSimulation
     private readonly List<Ship> _ships = [];
     private readonly List<Projectile> _projectiles = [];
     private readonly List<CombatEvent> _events = [];
+    private readonly Dictionary<string, ManualInput> _manualInputs = new(StringComparer.Ordinal);
     private string _selectedShipId = "player-flagship";
-    private ManualInput _manualInput;
     private MissionDefinition _mission;
     private int _objectiveTotal;
 
@@ -43,16 +43,17 @@ public sealed class BattleSimulation
     public Ship SelectedShip =>
         FindShip(_selectedShipId) is { IsAlive: true } selected
             ? selected
-            : _ships.First(ship => ship.Team == Team.Player && ship.IsAlive);
+            : _ships.FirstOrDefault(ship => ship.Team == Team.Player && ship.IsAlive) ??
+              _ships.First(ship => ship.IsAlive);
 
     public void Reset()
     {
         _ships.Clear();
         _projectiles.Clear();
         _events.Clear();
+        _manualInputs.Clear();
         ElapsedSeconds = 0;
         Status = BattleStatus.Active;
-        _manualInput = ManualInput.None;
 
         foreach (var spawn in _mission.Ships)
             _ships.Add(new(spawn.Id, spawn.Name, spawn.Class, spawn.Team, spawn.Position, spawn.Angle));
@@ -112,7 +113,7 @@ public sealed class BattleSimulation
             ship.OverdriveRemaining = Math.Max(0, ship.OverdriveRemaining - dt);
             ship.RecoverEnergy(7 * dt);
             ship.RegenerateShield(1.8 * dt);
-            if (ship.Id == _selectedShipId) ApplyManualControl(ship, dt);
+            if (_manualInputs.TryGetValue(ship.Id, out var manualInput)) ApplyManualControl(ship, manualInput, dt);
             else UpdatePilot(ship, dt);
             SeparateShips(ship, dt);
             Integrate(ship, dt);
@@ -121,11 +122,30 @@ public sealed class BattleSimulation
         UpdateBattleStatus();
     }
 
-    public void SetManualInput(ManualInput input) => _manualInput = input;
-
-    public string TryActivateSelectedAbility()
+    public void SetManualInput(ManualInput input)
     {
-        var ship = SelectedShip;
+        SetManualInput(_selectedShipId, input);
+    }
+
+    public void SetManualInput(string shipId, ManualInput input)
+    {
+        if (FindShip(shipId) is not { IsAlive: true } ship) return;
+        _manualInputs[shipId] = input;
+        ship.IsManuallyControlled = true;
+    }
+
+    public void ClearManualInputs()
+    {
+        _manualInputs.Clear();
+        foreach (var ship in _ships) ship.IsManuallyControlled = false;
+    }
+
+    public string TryActivateSelectedAbility() => TryActivateAbility(_selectedShipId);
+
+    public string TryActivateAbility(string shipId)
+    {
+        var ship = FindShip(shipId);
+        if (ship is not { IsAlive: true }) return "Ship is unavailable";
         if (ship.AbilityCooldown > 0) return $"{ship.Name} ability ready in {Math.Ceiling(ship.AbilityCooldown)}s";
         string message;
         switch (ship.Class)
@@ -173,14 +193,14 @@ public sealed class BattleSimulation
     public IReadOnlyList<Ship> PlayerFleet =>
         _ships.Where(ship => ship.IsAlive && ship.Team == Team.Player).ToList();
 
+    public IReadOnlyList<Ship> Fleet(Team team) =>
+        _ships.Where(ship => ship.IsAlive && ship.Team == team).ToList();
+
     public void SelectPlayerShip(int index)
     {
         var fleet = PlayerFleet;
         if (fleet.Count == 0) return;
-        SelectedShip.IsManuallyControlled = false;
-        _selectedShipId = fleet[PositiveModulo(index, fleet.Count)].Id;
-        SelectedShip.IsManuallyControlled = true;
-        AddOrderEvent($"Manual control: {SelectedShip.Name}");
+        SelectShip(fleet[PositiveModulo(index, fleet.Count)].Id);
     }
 
     public void CycleSelectedShip()
@@ -189,6 +209,104 @@ public sealed class BattleSimulation
         var current = fleet.Select((ship, index) => (ship, index))
             .FirstOrDefault(entry => entry.ship.Id == _selectedShipId).index;
         SelectPlayerShip(current + 1);
+    }
+
+    public void SelectShip(string shipId)
+    {
+        if (FindShip(shipId) is not { IsAlive: true } ship) return;
+        ClearManualInputs();
+        _selectedShipId = ship.Id;
+        ship.IsManuallyControlled = true;
+        AddOrderEvent($"Manual control: {ship.Name}");
+    }
+
+    public SimulationFrame CaptureFrame() => new(
+        _mission.Id,
+        Seed,
+        Status,
+        ElapsedSeconds,
+        InitialPlayerStrength,
+        InitialEnemyStrength,
+        _ships.Select(ship => new ShipFrame(
+            ship.Id,
+            ship.Position,
+            ship.Velocity,
+            ship.Angle,
+            ship.Hull,
+            ship.Shield,
+            ship.Energy,
+            ship.WeaponCooldown,
+            ship.AbilityCooldown,
+            ship.OverdriveRemaining,
+            ship.Order.Type,
+            ship.Order.TargetId,
+            ship.Order.Destination,
+            ship.IsManuallyControlled)).ToArray(),
+        _projectiles.Select(projectile => new ProjectileFrame(
+            projectile.SourceId,
+            projectile.Team,
+            projectile.Damage,
+            projectile.Position,
+            projectile.Velocity,
+            projectile.RemainingLife)).ToArray(),
+        _events.Select(combatEvent => new CombatEventFrame(
+            combatEvent.Type,
+            combatEvent.Position,
+            combatEvent.Message,
+            combatEvent.RemainingLife,
+            combatEvent.InitialLife)).ToArray());
+
+    public void ApplyFrame(SimulationFrame frame)
+    {
+        var expectedIds = frame.Ships.Select(ship => ship.Id).ToHashSet(StringComparer.Ordinal);
+        var currentIds = _ships.Select(ship => ship.Id).ToHashSet(StringComparer.Ordinal);
+        if (_mission.Id != frame.MissionId || Seed != frame.Seed || !expectedIds.SetEquals(currentIds))
+        {
+            _mission = MissionCatalog.Get(frame.MissionId);
+            Seed = frame.Seed;
+            Reset();
+        }
+
+        foreach (var state in frame.Ships)
+        {
+            FindShip(state.Id)?.ApplyAuthoritativeState(
+                state.Position,
+                state.Velocity,
+                state.Angle,
+                state.Hull,
+                state.Shield,
+                state.Energy,
+                state.WeaponCooldown,
+                state.AbilityCooldown,
+                state.OverdriveRemaining,
+                new(state.Order, state.TargetId, state.Destination),
+                state.IsManuallyControlled);
+        }
+
+        _projectiles.Clear();
+        _projectiles.AddRange(frame.Projectiles.Select(projectile => new Projectile(
+            projectile.SourceId,
+            projectile.Team,
+            projectile.Damage,
+            projectile.Position,
+            projectile.Velocity,
+            projectile.RemainingLife)));
+        _events.Clear();
+        _events.AddRange(frame.Events.Where(item => item.RemainingLife > 0).Select(item => new CombatEvent(
+            item.Type,
+            item.Position,
+            item.Message,
+            item.RemainingLife,
+            item.InitialLife)));
+        Status = frame.Status;
+        ElapsedSeconds = frame.ElapsedSeconds;
+        InitialPlayerStrength = frame.InitialPlayerStrength;
+        InitialEnemyStrength = frame.InitialEnemyStrength;
+        _objectiveTotal = CountObjectiveTargets();
+        _manualInputs.Clear();
+        if (FindShip(_selectedShipId) is not { IsAlive: true })
+            _selectedShipId = _ships.FirstOrDefault(ship => ship.IsAlive && ship.Team == Team.Player)?.Id ??
+                              _ships.First(ship => ship.IsAlive).Id;
     }
 
     public void AddOrderEvent(string message)
@@ -203,17 +321,17 @@ public sealed class BattleSimulation
         _ships.Where(ship => ship.Team == team && ship.IsAlive)
             .Sum(ship => ship.HullRatio + ship.ShieldRatio * 0.55);
 
-    private void ApplyManualControl(Ship ship, double dt)
+    private void ApplyManualControl(Ship ship, ManualInput input, double dt)
     {
-        var rotation = (_manualInput.TurnRight ? 1 : 0) - (_manualInput.TurnLeft ? 1 : 0);
+        var rotation = (input.TurnRight ? 1 : 0) - (input.TurnLeft ? 1 : 0);
         ship.Angle += rotation * ship.Stats.TurnRate * dt;
         ship.NormalizeAngle();
 
-        var throttle = (_manualInput.Thrust ? 1.0 : 0) - (_manualInput.Reverse ? 0.55 : 0);
+        var throttle = (input.Thrust ? 1.0 : 0) - (input.Reverse ? 0.55 : 0);
         ship.Velocity += Vector2D.FromAngle(ship.Angle) * (ship.Stats.Acceleration * throttle * dt);
         ship.Velocity = ship.Velocity.Limit(ship.EffectiveMaxSpeed);
         if (Math.Abs(throttle) < 1e-9) ship.Velocity *= Math.Pow(0.988, dt * 60);
-        if (_manualInput.Fire && NearestEnemy(ship, ship.Stats.WeaponRange) is { } target) Fire(ship, target);
+        if (input.Fire && NearestEnemy(ship, ship.Stats.WeaponRange) is { } target) Fire(ship, target);
     }
 
     private void UpdatePilot(Ship ship, double dt)

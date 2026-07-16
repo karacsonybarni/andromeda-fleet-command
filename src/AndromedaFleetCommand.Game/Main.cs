@@ -1,6 +1,7 @@
 using AndromedaFleetCommand.Core.Commands;
 using AndromedaFleetCommand.Core.Configuration;
 using AndromedaFleetCommand.Core.Model;
+using AndromedaFleetCommand.Core.Multiplayer;
 using AndromedaFleetCommand.Core.Missions;
 using AndromedaFleetCommand.Core.Replay;
 using AndromedaFleetCommand.Core.Simulation;
@@ -30,7 +31,7 @@ public sealed partial class Main : Node2D
         : new("ff9b42");
     private static Color Panel => new(0.015f, 0.06f, 0.11f, 0.92f);
 
-    private readonly BattleSimulation _simulation = new(MissionId.FirstCommand);
+    private BattleSimulation _simulation = new(MissionId.FirstCommand);
     private readonly RuleBasedCommandInterpreter _rules = new();
     private readonly CommandDispatcher _dispatcher = new();
     private readonly Queue<string> _log = new();
@@ -95,11 +96,22 @@ public sealed partial class Main : Node2D
     private int _visualQaFrames;
     private string _visualQaDirectory = string.Empty;
     private readonly List<string> _visualQaCaptures = [];
+    private MultiplayerManager? _multiplayer;
+    private bool _showMultiplayer;
+    private bool _wasMultiplayerMatch;
+    private LineEdit? _multiplayerName;
+    private LineEdit? _multiplayerAddress;
+    private double _networkControlAccumulator;
+    private bool _multiplayerSmokeHost;
+    private bool _multiplayerSmokeClient;
+    private bool _multiplayerSmokePassed;
 
     public override void _Ready()
     {
         var commandArguments = OS.GetCmdlineUserArgs();
         _smokeTest = commandArguments.Contains("--smoke-test", StringComparer.Ordinal);
+        _multiplayerSmokeHost = commandArguments.Contains("--multiplayer-smoke-host", StringComparer.Ordinal);
+        _multiplayerSmokeClient = commandArguments.Contains("--multiplayer-smoke-client", StringComparer.Ordinal);
         _visualQa = commandArguments.Contains("--visual-qa", StringComparer.Ordinal);
         var benchmarkMode = commandArguments.Contains("--benchmark", StringComparer.Ordinal);
         _settingsStore = new(ProjectSettings.GlobalizePath("user://settings.json"));
@@ -117,13 +129,36 @@ public sealed partial class Main : Node2D
         _localAiSetup = new();
         RebuildLocalAiAdapters();
         _audio = new(this);
-        if (!_smokeTest && !_visualQa && !benchmarkMode) _audio.StartAmbient();
+        if (!_smokeTest && !_visualQa && !benchmarkMode && !_multiplayerSmokeHost && !_multiplayerSmokeClient)
+            _audio.StartAmbient();
         _platform = PlatformServicesFactory.Create();
         _progressStore = new(ProjectSettings.GlobalizePath("user://campaign-progress.json"));
         _progress = _progressStore.Load();
         CreateStars();
         LoadShipArt();
         CreateCommandLine();
+        CreateMultiplayerControls();
+        _multiplayer = new MultiplayerManager { Name = "MultiplayerManager" };
+        _multiplayer.LobbyChanged += OnMultiplayerLobbyChanged;
+        _multiplayer.MatchStarted += OnMultiplayerMatchStarted;
+        _multiplayer.SnapshotReceived += OnMultiplayerSnapshot;
+        _multiplayer.NoticeReceived += OnMultiplayerNotice;
+        _multiplayer.StateChanged += OnMultiplayerStateChanged;
+        AddChild(_multiplayer);
+        if (_multiplayerSmokeHost)
+        {
+            _showHelp = false;
+            var result = _multiplayer.Host(MultiplayerMode.Cooperative, "Smoke Host");
+            if (!result.Accepted) throw new InvalidOperationException(result.Message);
+            GD.Print("AFC_MP_HOST_READY");
+        }
+        else if (_multiplayerSmokeClient)
+        {
+            _showHelp = false;
+            var result = _multiplayer.Join("127.0.0.1", "Smoke Client");
+            if (!result.Accepted) throw new InvalidOperationException(result.Message);
+            GD.Print("AFC_MP_CLIENT_CONNECTING");
+        }
         AddLog($"Mission 1: {_simulation.Mission.Title}. Press {BindingLabel(GameActionIds.Help)} when ready.");
         AddLog($"{BindingLabel(GameActionIds.Command)} opens the fleet command channel.");
         AddLog($"Platform: {_platform.Name}");
@@ -160,6 +195,14 @@ public sealed partial class Main : Node2D
         _crashReports?.Dispose();
         _audio?.StopAmbient();
         _platform?.Dispose();
+        if (_multiplayer is not null)
+        {
+            _multiplayer.LobbyChanged -= OnMultiplayerLobbyChanged;
+            _multiplayer.MatchStarted -= OnMultiplayerMatchStarted;
+            _multiplayer.SnapshotReceived -= OnMultiplayerSnapshot;
+            _multiplayer.NoticeReceived -= OnMultiplayerNotice;
+            _multiplayer.StateChanged -= OnMultiplayerStateChanged;
+        }
     }
 
     public override void _Process(double delta)
@@ -178,20 +221,32 @@ public sealed partial class Main : Node2D
             if (_statusTime <= 0) _status = string.Empty;
         }
 
-        if (!_paused && !_visualQaFreeze && !_showHelp && !_commandMode && !_showSettings && !_showBindings &&
-            !_showMissionSelect && !_showLocalAiSetup && _simulation.Status == BattleStatus.Active)
+        var gameplayInputAvailable = !_paused && !_visualQaFreeze && !_showHelp && !_commandMode &&
+            !_showSettings && !_showBindings && !_showMissionSelect && !_showLocalAiSetup && !_showMultiplayer &&
+            _simulation.Status == BattleStatus.Active;
+        if (gameplayInputAvailable && _multiplayer?.IsInMatch == true)
+        {
+            var manualInput = ReadManualInput();
+            _networkControlAccumulator += delta;
+            if (_networkControlAccumulator >= 1.0 / 30.0)
+            {
+                _networkControlAccumulator %= 1.0 / 30.0;
+                _multiplayer.SendControl(_simulation.SelectedShip.Id, manualInput);
+            }
+            ObserveCombatAudio();
+            ObserveBattleStatus();
+            if (_simulation.Projectiles.Count > _previousProjectileCount && _weaponAudioCooldown <= 0)
+            {
+                PlayCue(TacticalCue.Weapon, "Weapons fire");
+                _weaponAudioCooldown = 0.09;
+            }
+            _previousProjectileCount = _simulation.Projectiles.Count;
+            _accumulator = 0;
+        }
+        else if (gameplayInputAvailable)
         {
             _accumulator += Math.Min(delta, 0.2);
-            var joyX = Input.GetJoyAxis(0, JoyAxis.LeftX);
-            var joyY = Input.GetJoyAxis(0, JoyAxis.LeftY);
-            var deadzone = (float)_settings.GamepadDeadzone;
-            var manualInput = new ManualInput(
-                IsActionPressed(GameActionIds.Thrust) || joyY < -deadzone,
-                IsActionPressed(GameActionIds.Reverse) || joyY > deadzone,
-                IsActionPressed(GameActionIds.TurnLeft) || joyX < -deadzone,
-                IsActionPressed(GameActionIds.TurnRight) || joyX > deadzone,
-                IsActionPressed(GameActionIds.Fire) ||
-                Input.IsJoyButtonPressed(0, BoundButton(GamepadActionIds.Fire)));
+            var manualInput = ReadManualInput();
             if (manualInput != ManualInput.None) AdvanceTutorial(TutorialAction.ManualControl);
             _replayRecorder?.RecordInput(_simulationTick, manualInput);
             _simulation.SetManualInput(manualInput);
@@ -213,8 +268,9 @@ public sealed partial class Main : Node2D
         }
         else
         {
-            _simulation.SetManualInput(ManualInput.None);
+            if (_multiplayer?.IsInMatch != true) _simulation.SetManualInput(ManualInput.None);
             _accumulator = 0;
+            _networkControlAccumulator = 0;
         }
         QueueRedraw();
         if (_visualQa) AdvanceVisualQa();
@@ -226,6 +282,19 @@ public sealed partial class Main : Node2D
             _smokeTest = false;
             GetTree().Quit();
         }
+    }
+
+    private ManualInput ReadManualInput()
+    {
+        var joyX = Input.GetJoyAxis(0, JoyAxis.LeftX);
+        var joyY = Input.GetJoyAxis(0, JoyAxis.LeftY);
+        var deadzone = (float)_settings.GamepadDeadzone;
+        return new(
+            IsActionPressed(GameActionIds.Thrust) || joyY < -deadzone,
+            IsActionPressed(GameActionIds.Reverse) || joyY > deadzone,
+            IsActionPressed(GameActionIds.TurnLeft) || joyX < -deadzone,
+            IsActionPressed(GameActionIds.TurnRight) || joyX > deadzone,
+            IsActionPressed(GameActionIds.Fire) || Input.IsJoyButtonPressed(0, BoundButton(GamepadActionIds.Fire)));
     }
 
     private void AdvanceVisualQa()
@@ -359,6 +428,13 @@ public sealed partial class Main : Node2D
             return;
         }
 
+        if (_showMultiplayer)
+        {
+            HandleMultiplayerInput(key.Keycode);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
+
         if (_showLocalAiSetup)
         {
             switch (key.Keycode)
@@ -426,7 +502,8 @@ public sealed partial class Main : Node2D
         }
         else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Pause))
         {
-            _paused = !_paused;
+            if (_multiplayer?.IsInMatch == true) SetStatus("Online battles cannot be paused");
+            else _paused = !_paused;
         }
         else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Restart))
         {
@@ -434,9 +511,11 @@ public sealed partial class Main : Node2D
         }
         else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Missions))
         {
-            _showMissionSelect = true;
+            if (_multiplayer?.IsInMatch == true) SetStatus("Mission selection is controlled by the host lobby");
+            else _showMissionSelect = true;
         }
-        else if (!_showHelp && _simulation.Status == BattleStatus.PlayerVictory &&
+        else if (!_showHelp && _multiplayer?.IsInMatch != true &&
+                 _simulation.Status == BattleStatus.PlayerVictory &&
                  IsActionKey(key.Keycode, GameActionIds.NextMission))
         {
             LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
@@ -459,6 +538,9 @@ public sealed partial class Main : Node2D
                     break;
                 case Key.F10:
                     _showSettings = true;
+                    break;
+                case Key.F6:
+                    ToggleMultiplayerOverlay();
                     break;
                 case Key.F7:
                     RunBenchmark(false);
@@ -535,6 +617,245 @@ public sealed partial class Main : Node2D
         canvas.AddChild(_commandLine);
     }
 
+    private void CreateMultiplayerControls()
+    {
+        var canvas = new CanvasLayer { Layer = 21 };
+        AddChild(canvas);
+        _multiplayerName = CreateMultiplayerLineEdit("Captain name", new(515, 315), 570);
+        _multiplayerName.Text = string.IsNullOrWhiteSpace(System.Environment.UserName)
+            ? "Captain"
+            : System.Environment.UserName;
+        _multiplayerAddress = CreateMultiplayerLineEdit("Host address (example: 192.168.1.20:7777)",
+            new(515, 405), 570);
+        _multiplayerAddress.Text = $"127.0.0.1:{MultiplayerManager.DefaultPort}";
+        canvas.AddChild(_multiplayerName);
+        canvas.AddChild(_multiplayerAddress);
+    }
+
+    private LineEdit CreateMultiplayerLineEdit(string placeholder, Vector2 position, float width)
+    {
+        var line = new LineEdit
+        {
+            Visible = false,
+            PlaceholderText = placeholder,
+            Position = position,
+            Size = new(width, 52),
+            MaxLength = 80,
+            CaretBlink = true
+        };
+        line.AddThemeFontSizeOverride("font_size", 18);
+        var style = new StyleBoxFlat
+        {
+            BgColor = new(0.01f, 0.05f, 0.09f, 0.98f),
+            BorderColor = Cyan,
+            BorderWidthLeft = 1,
+            BorderWidthTop = 1,
+            BorderWidthRight = 1,
+            BorderWidthBottom = 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8,
+            ContentMarginLeft = 16
+        };
+        line.AddThemeStyleboxOverride("normal", style);
+        line.AddThemeStyleboxOverride("focus", style);
+        return line;
+    }
+
+    private void ToggleMultiplayerOverlay()
+    {
+        _showMultiplayer = !_showMultiplayer;
+        RefreshMultiplayerControlVisibility();
+        if (_showMultiplayer)
+        {
+            _showHelp = false;
+            _showMissionSelect = false;
+            _showSettings = false;
+            _showBindings = false;
+            _showLocalAiSetup = false;
+            _multiplayerName?.GrabFocus();
+        }
+        else
+        {
+            _multiplayerName?.ReleaseFocus();
+            _multiplayerAddress?.ReleaseFocus();
+        }
+    }
+
+    private void RefreshMultiplayerControlVisibility()
+    {
+        var showFields = _showMultiplayer && _multiplayer?.State is null or MultiplayerSessionState.Offline;
+        if (_multiplayerName is not null) _multiplayerName.Visible = showFields;
+        if (_multiplayerAddress is not null) _multiplayerAddress.Visible = showFields;
+    }
+
+    private void HandleMultiplayerInput(Key key)
+    {
+        if (key is Key.F6 or Key.Escape)
+        {
+            ToggleMultiplayerOverlay();
+            return;
+        }
+        if (_multiplayer is null) return;
+
+        if (_multiplayer.State == MultiplayerSessionState.Offline)
+        {
+            LobbyActionResult? result = key switch
+            {
+                Key.H => _multiplayer.Host(MultiplayerMode.Cooperative, MultiplayerDisplayName()),
+                Key.V => _multiplayer.Host(MultiplayerMode.Versus, MultiplayerDisplayName()),
+                Key.J => JoinMultiplayer(),
+                _ => null
+            };
+            if (result is not null) SetStatus(result.Message);
+            RefreshMultiplayerControlVisibility();
+            return;
+        }
+
+        if (key == Key.D)
+        {
+            _multiplayer.Close();
+            RefreshMultiplayerControlVisibility();
+            return;
+        }
+        if (_multiplayer.IsInMatch)
+        {
+            if (key == Key.R && _multiplayer.IsHost) SetStatus(_multiplayer.Rematch().Message);
+            return;
+        }
+        if (!_multiplayer.IsHost) return;
+
+        switch (key)
+        {
+            case Key.Enter:
+            case Key.KpEnter:
+                SetStatus(_multiplayer.StartMatch().Message);
+                break;
+            case Key.M:
+                var next = _multiplayer.Lobby?.Mode == MultiplayerMode.Cooperative
+                    ? MultiplayerMode.Versus
+                    : MultiplayerMode.Cooperative;
+                SetStatus(_multiplayer.SetMode(next).Message);
+                break;
+            case >= Key.Key1 and <= Key.Key3:
+                SetStatus(_multiplayer.SetCooperativeMission(
+                    MissionCatalog.All[(int)key - (int)Key.Key1].Id).Message);
+                break;
+        }
+    }
+
+    private LobbyActionResult JoinMultiplayer()
+    {
+        if (_multiplayer is null) return new(false, "Multiplayer is unavailable");
+        var endpoint = (_multiplayerAddress?.Text ?? string.Empty).Trim();
+        var host = endpoint;
+        var port = MultiplayerManager.DefaultPort;
+        var separator = endpoint.LastIndexOf(':');
+        if (separator > 0 && int.TryParse(endpoint[(separator + 1)..], out var parsedPort))
+        {
+            host = endpoint[..separator];
+            port = parsedPort;
+        }
+        return _multiplayer.Join(host, MultiplayerDisplayName(), port);
+    }
+
+    private string MultiplayerDisplayName()
+    {
+        var name = _multiplayerName?.Text;
+        return string.IsNullOrWhiteSpace(name) ? "Captain" : name.Trim();
+    }
+
+    private void OnMultiplayerLobbyChanged(FleetLobbySnapshot lobby)
+    {
+        SetStatus($"{lobby.Mode} lobby • {lobby.Players.Count}/{lobby.MaximumPlayers} captains");
+        RefreshMultiplayerControlVisibility();
+        if (_multiplayerSmokeHost && !lobby.MatchStarted && lobby.Players.Count >= 2)
+        {
+            var result = _multiplayer!.StartMatch();
+            if (!result.Accepted) throw new InvalidOperationException(result.Message);
+        }
+    }
+
+    private void OnMultiplayerMatchStarted(MatchStartMessage start)
+    {
+        _wasMultiplayerMatch = true;
+        _simulation = new(start.Snapshot.Frame.MissionId, start.Snapshot.Frame.Seed);
+        _simulation.ApplyFrame(start.Snapshot.Frame);
+        _simulationTick = start.Snapshot.ServerTick;
+        _observedBattleStatus = BattleStatus.Active;
+        _previousProjectileCount = 0;
+        _heardCombatEvents.Clear();
+        _paused = false;
+        _showHelp = false;
+        _showMultiplayer = false;
+        RefreshMultiplayerControlVisibility();
+        EnsureLocalShipSelected();
+        _log.Clear();
+        AddLog($"MULTIPLAYER  {start.Lobby.Mode} match started.");
+        AddLog("The host is authoritative; disconnected ships return to bot control.");
+        SetStatus("Fleet link synchronized");
+        if (_multiplayerSmokeHost || _multiplayerSmokeClient)
+        {
+            var command = _rules.Parse("All ships, attack the enemy flagship").Command!;
+            var admission = _multiplayer!.SendCommand(command, _simulation.SelectedShip.Id, _simulation);
+            if (!admission.Accepted) throw new InvalidOperationException(admission.Message);
+        }
+    }
+
+    private void OnMultiplayerSnapshot(AuthoritativeSnapshot snapshot)
+    {
+        if (_multiplayer?.IsInMatch != true) return;
+        _simulation.ApplyFrame(snapshot.Frame);
+        _simulationTick = snapshot.ServerTick;
+        EnsureLocalShipSelected();
+        if ((_multiplayerSmokeHost || _multiplayerSmokeClient) && !_multiplayerSmokePassed)
+        {
+            var checksum = SimulationChecksum.Compute(_simulation);
+            if (!checksum.Equals(snapshot.Checksum, StringComparison.Ordinal))
+                throw new InvalidOperationException("Multiplayer snapshot checksum did not recover the client state");
+            var requiredTick = _multiplayerSmokeHost ? 240 : 180;
+            if (snapshot.ServerTick >= requiredTick)
+            {
+                _multiplayerSmokePassed = true;
+                var role = _multiplayerSmokeHost ? "HOST" : "CLIENT";
+                GD.Print($"AFC_MP_{role}_PASS tick={snapshot.ServerTick} ships={_multiplayer!.LocalShipIds.Count}");
+                GetTree().Quit();
+            }
+        }
+    }
+
+    private void OnMultiplayerNotice(string notice)
+    {
+        SetStatus(notice);
+        AddLog($"NETWORK  {notice}");
+    }
+
+    private void OnMultiplayerStateChanged(MultiplayerSessionState state)
+    {
+        RefreshMultiplayerControlVisibility();
+        if (state != MultiplayerSessionState.Offline || !_wasMultiplayerMatch) return;
+        _wasMultiplayerMatch = false;
+        _simulation = new(MissionId.FirstCommand);
+        _simulationTick = 0;
+        _observedBattleStatus = BattleStatus.Active;
+        _showHelp = true;
+        _paused = false;
+        _log.Clear();
+        AddLog("Returned to the single-player campaign.");
+        StartReplayRecording();
+    }
+
+    private void EnsureLocalShipSelected()
+    {
+        if (_multiplayer?.IsInMatch != true) return;
+        var assigned = _multiplayer.LocalShipIds;
+        if (assigned.Contains(_simulation.SelectedShip.Id, StringComparer.Ordinal) &&
+            _simulation.SelectedShip.IsAlive) return;
+        var first = assigned.Select(_simulation.FindShip).FirstOrDefault(ship => ship is { IsAlive: true });
+        if (first is not null) _simulation.SelectShip(first.Id);
+    }
+
     private void OpenCommandLine()
     {
         if (_commandLine is null) return;
@@ -571,7 +892,9 @@ public sealed partial class Main : Node2D
             return;
         }
         _replayRecorder?.RecordCommand(_simulationTick, result.Command);
-        var acknowledgement = _dispatcher.Dispatch(result.Command, _simulation);
+        var acknowledgement = _multiplayer?.IsInMatch == true
+            ? _multiplayer.SendCommand(result.Command, _simulation.SelectedShip.Id, _simulation).Message
+            : _dispatcher.Dispatch(result.Command, _simulation);
         _lastIssuedCommand = text.Trim();
         _lastAcknowledgement = acknowledgement;
         _commandPulseTime = 4.5;
@@ -607,6 +930,13 @@ public sealed partial class Main : Node2D
 
     private void ActivateSelectedAbility()
     {
+        if (_multiplayer?.IsInMatch == true)
+        {
+            var admission = _multiplayer.SendControl(_simulation.SelectedShip.Id, ReadManualInput(), true);
+            SetStatus(admission.Accepted ? $"{_simulation.SelectedShip.Name} ability requested" : admission.Message);
+            if (admission.Accepted) PlayCue(TacticalCue.Ability, "Ability request relayed");
+            return;
+        }
         _replayRecorder?.RecordAbility(_simulationTick);
         var cooldownBefore = _simulation.SelectedShip.AbilityCooldown;
         var abilityMessage = _simulation.TryActivateSelectedAbility();
@@ -621,6 +951,12 @@ public sealed partial class Main : Node2D
 
     private void SelectPlayerShip(int index)
     {
+        if (_multiplayer?.IsInMatch == true)
+        {
+            var ships = LocalSelectableShips();
+            if (ships.Count > 0) _simulation.SelectShip(ships[Math.Clamp(index, 0, ships.Count - 1)].Id);
+            return;
+        }
         _replayRecorder?.RecordShipSelection(_simulationTick, index);
         _simulation.SelectPlayerShip(index);
         AdvanceTutorial(TutorialAction.SwitchShip);
@@ -628,10 +964,21 @@ public sealed partial class Main : Node2D
 
     private void CyclePlayerShip()
     {
+        if (_multiplayer?.IsInMatch == true)
+        {
+            var ships = LocalSelectableShips();
+            if (ships.Count == 0) return;
+            var current = ships.FindIndex(ship => ship.Id == _simulation.SelectedShip.Id);
+            _simulation.SelectShip(ships[(current + 1 + ships.Count) % ships.Count].Id);
+            return;
+        }
         _replayRecorder?.RecordShipCycle(_simulationTick);
         _simulation.CycleSelectedShip();
         AdvanceTutorial(TutorialAction.SwitchShip);
     }
+
+    private List<Ship> LocalSelectableShips() => _multiplayer?.LocalShipIds
+        .Select(_simulation.FindShip).Where(ship => ship is { IsAlive: true }).Cast<Ship>().ToList() ?? [];
 
     private void HandleGamepadButton(JoyButton button)
     {
@@ -688,17 +1035,19 @@ public sealed partial class Main : Node2D
         }
         else if (IsGamepadButton(button, GamepadActionIds.Missions))
         {
-            _showMissionSelect = true;
+            if (_multiplayer?.IsInMatch == true) SetStatus("Mission selection is controlled by the host lobby");
+            else _showMissionSelect = true;
         }
         else if (IsGamepadButton(button, GamepadActionIds.Pause))
         {
-            _paused = !_paused;
+            if (_multiplayer?.IsInMatch == true) SetStatus("Online battles cannot be paused");
+            else _paused = !_paused;
         }
         else if (IsGamepadButton(button, GamepadActionIds.Restart))
         {
             Restart();
         }
-        else if (_simulation.Status == BattleStatus.PlayerVictory &&
+        else if (_multiplayer?.IsInMatch != true && _simulation.Status == BattleStatus.PlayerVictory &&
                  IsGamepadButton(button, GamepadActionIds.NextMission))
         {
             LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
@@ -1204,6 +1553,13 @@ public sealed partial class Main : Node2D
 
     private void Restart()
     {
+        if (_multiplayer?.IsInMatch == true)
+        {
+            SetStatus(_multiplayer.IsHost
+                ? _multiplayer.Rematch().Message
+                : "Only the host can start a rematch");
+            return;
+        }
         _simulation.Reset();
         _log.Clear();
         AddLog($"Mission restarted: {_simulation.Mission.Title}.");
@@ -1221,6 +1577,11 @@ public sealed partial class Main : Node2D
 
     private void LoadMission(int missionIndex)
     {
+        if (_multiplayer?.IsInMatch == true)
+        {
+            SetStatus("Return to the lobby before selecting a campaign mission");
+            return;
+        }
         if (missionIndex < 0 || missionIndex >= MissionCatalog.All.Count)
         {
             SetStatus("Campaign complete");
@@ -1254,6 +1615,14 @@ public sealed partial class Main : Node2D
     {
         if (_simulation.Status == _observedBattleStatus) return;
         _observedBattleStatus = _simulation.Status;
+        if (_multiplayer?.IsInMatch == true)
+        {
+            var won = LocalPlayerWon();
+            PlayCue(won ? TacticalCue.Victory : TacticalCue.Defeat,
+                won ? "Your fleet won the battle" : "Your fleet was defeated");
+            AddLog(won ? "MULTIPLAYER  Victory secured." : "MULTIPLAYER  Your fleet was defeated.");
+            return;
+        }
         SaveCompletedReplay();
         if (_simulation.Status == BattleStatus.EnemyVictory)
         {
@@ -1278,6 +1647,14 @@ public sealed partial class Main : Node2D
         AddLog(current + 1 < MissionCatalog.All.Count
             ? $"Mission complete. Mission {current + 2} unlocked."
             : "Campaign demo complete.");
+    }
+
+    private bool LocalPlayerWon()
+    {
+        var team = _multiplayer?.LocalTeam ?? Team.Player;
+        return team == Team.Player
+            ? _simulation.Status == BattleStatus.PlayerVictory
+            : _simulation.Status == BattleStatus.EnemyVictory;
     }
 
     private void AdvanceTutorial(TutorialAction action)
@@ -1714,7 +2091,7 @@ public sealed partial class Main : Node2D
             new(32, 38), new(22, 52) }, new Color(Cyan, 0.86f), 2.2f, true);
         DrawLabel("ANDROMEDA", new(68, 31), 24, Colors.White);
         DrawLabel("FLEET COMMAND", new(70, 54), 15, Cyan);
-        DrawLabel($"MISSION {MissionCatalog.IndexOf(_simulation.Mission.Id) + 1}  •  {_simulation.Mission.Title.ToUpperInvariant()}",
+        DrawLabel(MissionHeader(_simulation.Mission),
             new(280, 44), 12, new Color("8bbdd2"), HorizontalAlignment.Center, 210);
 
         DrawFactionBar(new(520, 18), 245, (float)(_simulation.FleetStrength(Team.Player) /
@@ -1788,8 +2165,11 @@ public sealed partial class Main : Node2D
     {
         var area = new Rect2(20, 104, 250, 192);
         DrawPanel(area);
-        DrawLabel("FRIENDLY FLEET", new(34, 126), 13, new Color("a0d2eb"));
-        var fleet = _simulation.Ships.Where(ship => ship.Team == Team.Player).ToList();
+        DrawLabel(_multiplayer?.IsInMatch == true ? "YOUR COMMAND" : "FRIENDLY FLEET",
+            new(34, 126), 13, new Color("a0d2eb"));
+        var fleet = _multiplayer?.IsInMatch == true
+            ? _multiplayer.LocalShipIds.Select(_simulation.FindShip).Where(ship => ship is not null).Cast<Ship>().ToList()
+            : _simulation.Ships.Where(ship => ship.Team == Team.Player).ToList();
         for (var index = 0; index < fleet.Count; index++)
         {
             var ship = fleet[index];
@@ -1919,7 +2299,11 @@ public sealed partial class Main : Node2D
 
     private void DrawOverlay()
     {
-        if (_showBindings)
+        if (_showMultiplayer)
+        {
+            DrawMultiplayer();
+        }
+        else if (_showBindings)
         {
             DrawBindings();
         }
@@ -1947,7 +2331,7 @@ public sealed partial class Main : Node2D
             DrawPanel(new(320, 90, 960, 720));
             DrawCenteredLabel(mission.Narrative.Chapter, 800, 145, 14, Cyan, 820);
             DrawCenteredLabel(
-                $"MISSION {MissionCatalog.IndexOf(mission.Id) + 1}  •  {mission.Title.ToUpperInvariant()}",
+                MissionHeader(mission),
                 800, 185, 30, Colors.White, 820);
             DrawCenteredLabel(mission.Subtitle, 800, 216, 15, new Color("99d3e9"), 820);
             DrawCenteredLabel(mission.Narrative.Speaker, 800, 258, 12, new Color("ffd065"), 820);
@@ -1993,6 +2377,15 @@ public sealed partial class Main : Node2D
                 : BindingLabel(GameActionIds.Pause);
             DrawBanner("PAUSED", $"Press {pause} to return to the battle", Cyan);
         }
+        else if (_multiplayer?.IsInMatch == true && _simulation.Status != BattleStatus.Active)
+        {
+            var won = LocalPlayerWon();
+            var instruction = _multiplayer.IsHost
+                ? $"Press {BindingLabel(GameActionIds.Restart)} for a rematch • F6 for session controls"
+                : "Waiting for the host to start a rematch • F6 for session controls";
+            DrawBanner(won ? "VICTORY" : "DEFEAT", instruction,
+                won ? new Color("48eba9") : Red);
+        }
         else if (_simulation.Status == BattleStatus.PlayerVictory)
         {
             var index = MissionCatalog.IndexOf(_simulation.Mission.Id);
@@ -2020,6 +2413,102 @@ public sealed partial class Main : Node2D
                 $"Press {restart} to regroup and try again", Red);
         }
     }
+
+    private void DrawMultiplayer()
+    {
+        DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.88f));
+        DrawPanel(new(360, 85, 880, 730));
+        DrawCenteredLabel("MULTIPLAYER FLEET LINK", 800, 150, 33, Colors.White, 760);
+        DrawCenteredLabel("One captain hosts the authoritative battle on their machine", 800, 184, 14,
+            Cyan, 760);
+
+        if (_multiplayer is null || _multiplayer.State == MultiplayerSessionState.Offline)
+        {
+            DrawLabel("CAPTAIN NAME", new(515, 302), 11, new Color("8eb8ca"));
+            DrawLabel("HOST ADDRESS", new(515, 392), 11, new Color("8eb8ca"));
+            DrawPanel(new(465, 500, 670, 154));
+            DrawCenteredLabel("H  HOST CO-OP VS BOTS", 800, 545, 16, new Color("48eba9"), 620);
+            DrawCenteredLabel("V  HOST PLAYER VS PLAYER", 800, 584, 16, new Color("ffd065"), 620);
+            DrawCenteredLabel("J  JOIN THE ENTERED ADDRESS", 800, 623, 16, Cyan, 620);
+            DrawCenteredLabel("Direct IP / LAN • UDP 7777 by default • up to four captains", 800, 700, 13,
+                new Color("9bc9dc"), 700);
+            DrawCenteredLabel("F6 or Esc to close", 800, 765, 12, new Color("789bac"), 700);
+            return;
+        }
+
+        if (_multiplayer.State == MultiplayerSessionState.Connecting)
+        {
+            DrawCenteredLabel("CONNECTING…", 800, 400, 31, new Color("ffd065"), 700);
+            DrawCenteredLabel("Establishing an ENet session with the host", 800, 440, 14,
+                new Color("9bc9dc"), 760);
+            DrawCenteredLabel("D disconnects • F6 or Esc closes this panel", 800, 690, 13,
+                new Color("789bac"), 700);
+            return;
+        }
+
+        var lobby = _multiplayer.Lobby;
+        if (lobby is null)
+        {
+            DrawCenteredLabel("WAITING FOR LOBBY STATE…", 800, 420, 22, Cyan, 700);
+            return;
+        }
+
+        var mission = MissionCatalog.Get(lobby.MissionId);
+        DrawCenteredLabel($"{lobby.Mode.ToString().ToUpperInvariant()}  •  {mission.Title.ToUpperInvariant()}",
+            800, 232, 21, lobby.Mode == MultiplayerMode.Cooperative ? new Color("48eba9") : new Color("ffd065"),
+            740);
+        DrawCenteredLabel($"{lobby.Players.Count}/{lobby.MaximumPlayers} CAPTAINS  •  " +
+                          (_multiplayer.IsHost ? $"HOSTING UDP {_multiplayer.Port}" : "CONNECTED TO HOST"),
+            800, 261, 12, new Color("9bc9dc"), 740);
+
+        for (var index = 0; index < lobby.Players.Count; index++)
+        {
+            var player = lobby.Players[index];
+            var y = 320 + index * 82;
+            var teamColor = player.Team == Team.Player ? Cyan : Red;
+            var local = player.PlayerId.Equals(_multiplayer.LocalPlayerId, StringComparison.Ordinal);
+            DrawPanel(new(455, y - 34, 690, 66));
+            DrawLabel(local ? "YOU" : $"P{index + 1}", new(480, y + 5), 12, teamColor);
+            DrawLabel((player.DisplayName + (player.IsHost ? "  ◆ HOST" : string.Empty)).ToUpperInvariant(),
+                new(535, y - 5), 15, Colors.White);
+            var shipNames = player.ShipIds.Select(id => mission.Ships.FirstOrDefault(ship => ship.Id == id)?.Name ?? id);
+            DrawLabel(ClipText(string.Join(" • ", shipNames), 65).ToUpperInvariant(), new(535, y + 19), 11,
+                new Color(teamColor, 0.84f));
+        }
+
+        if (_multiplayer.IsInMatch)
+        {
+            DrawCenteredLabel(_multiplayer.IsHost
+                    ? $"{BindingLabel(GameActionIds.Restart)} starts a synchronized rematch"
+                    : "The host controls rematches",
+                800, 690, 14, new Color("ffd065"), 700);
+            DrawCenteredLabel("D disconnects • F6 or Esc returns to battle", 800, 755, 13,
+                new Color("87b5ca"), 700);
+            return;
+        }
+
+        var canStart = lobby.Players.All(player => player.ShipIds.Count > 0) &&
+                       (lobby.Mode == MultiplayerMode.Cooperative ||
+                        lobby.Players.Any(player => player.Team == Team.Player) &&
+                        lobby.Players.Any(player => player.Team == Team.Enemy));
+        if (_multiplayer.IsHost)
+        {
+            DrawCenteredLabel(canStart ? "ENTER  START MATCH" : "VERSUS NEEDS A SECOND CAPTAIN",
+                800, 674, 16, canStart ? new Color("48eba9") : new Color("ffad55"), 700);
+            DrawCenteredLabel("M toggles co-op / versus • co-op: 1–3 chooses mission • D closes lobby",
+                800, 715, 13, new Color("ffd065"), 760);
+        }
+        else
+        {
+            DrawCenteredLabel("WAITING FOR THE HOST TO START", 800, 690, 16, new Color("ffd065"), 700);
+            DrawCenteredLabel("D disconnects • F6 or Esc closes this panel", 800, 735, 13,
+                new Color("87b5ca"), 700);
+        }
+    }
+
+    private static string MissionHeader(MissionDefinition mission) => mission.Id == MissionId.FleetDuel
+        ? $"FLEET DUEL  •  {mission.Title.ToUpperInvariant()}"
+        : $"MISSION {MissionCatalog.IndexOf(mission.Id) + 1}  •  {mission.Title.ToUpperInvariant()}";
 
     private void DrawTutorialBriefing()
     {

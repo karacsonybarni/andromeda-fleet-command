@@ -85,6 +85,7 @@ jobs:
           HOME="$(mktemp -d)" timeout 30s dist/linux/AndromedaFleetCommand.x86_64 --headless -- --smoke-test 2>&1 | tee "$smoke_log"
           grep -q "AFC_SMOKE_PASS" "$smoke_log"
           ! grep -q "invalid UID" "$smoke_log"
+          ./scripts/multiplayer-smoke.sh dist/linux/AndromedaFleetCommand.x86_64
           ./scripts/package-release.sh
           (cd dist/packages && sha256sum -c SHA256SUMS.txt)
           packaged_linux="$(find dist/packages -maxdepth 1 -name '*Linux-x64.tar.gz' -print -quit)"
