@@ -26,7 +26,11 @@ else
   readiness_attempts=900
 fi
 
-HOME="$host_home" timeout "${process_timeout}s" "$game" "${args[@]}" --multiplayer-smoke-host >"$host_log" 2>&1 &
+# Godot's exported .NET host can stall before C# initialization when stdout is a
+# regular file. Keep stdout as a pipe, as it is in the regular release smoke,
+# while tee captures the log without flooding CI output.
+HOME="$host_home" timeout "${process_timeout}s" "$game" "${args[@]}" --multiplayer-smoke-host \
+  </dev/null > >(tee "$host_log" >/dev/null) 2>&1 &
 host_pid=$!
 
 for _ in $(seq 1 "$readiness_attempts"); do
@@ -42,7 +46,8 @@ if ! grep -q "AFC_MP_HOST_READY" "$host_log"; then
 fi
 
 set +e
-HOME="$client_home" timeout "${process_timeout}s" "$game" "${args[@]}" --multiplayer-smoke-client >"$client_log" 2>&1
+HOME="$client_home" timeout "${process_timeout}s" "$game" "${args[@]}" --multiplayer-smoke-client \
+  </dev/null > >(tee "$client_log" >/dev/null) 2>&1
 client_status=$?
 wait "$host_pid"
 host_status=$?
