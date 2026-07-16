@@ -11,7 +11,8 @@ public static class MultiplayerWire
     public const int MaximumPayloadCharacters = 262_144;
     private static readonly JsonSerializerOptions Options = new()
     {
-        PropertyNameCaseInsensitive = true
+        PropertyNameCaseInsensitive = true,
+        IgnoreReadOnlyProperties = true
     };
 
     public static string Serialize<T>(T message) => JsonSerializer.Serialize(message, Options);

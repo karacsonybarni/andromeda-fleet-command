@@ -820,6 +820,18 @@ static void MultiplayerWireCodecRejectsMalformedPayloads()
     True(!MultiplayerWire.TryDeserialize<FleetLobbySnapshot>(
             new string('x', MultiplayerWire.MaximumPayloadCharacters + 1), out _),
         "Oversized payload is rejected");
+
+    var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 441);
+    var authoritative = session.Snapshot();
+    var snapshotPayload = MultiplayerWire.Serialize(authoritative);
+    True(!snapshotPayload.Contains("Normalized", StringComparison.Ordinal),
+        "Computed vector properties stay off the wire");
+    True(MultiplayerWire.TryDeserialize<AuthoritativeSnapshot>(snapshotPayload, out var decodedSnapshot) &&
+         decodedSnapshot is not null, "A complete authoritative snapshot round-trips through JSON");
+    var recovered = new BattleSimulation(MissionId.FleetDuel, 441);
+    recovered.ApplyFrame(decodedSnapshot!.Frame);
+    Equal(authoritative.Checksum, SimulationChecksum.Compute(recovered),
+        "The serialized snapshot recovers the authoritative checksum");
 }
 
 static void AuthoritativeSessionRejectsUnauthorizedCommands()
