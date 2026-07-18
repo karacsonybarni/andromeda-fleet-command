@@ -20,9 +20,9 @@ The campaign should sell one sentence:
 4. Local voice → validated order → deterministic pilot diagram
 5. Four ship roles and abilities
 
-Label every generated image as **AI-generated design concept, not in-engine
-footage**. Replace concepts with captured footage as soon as the demo reaches
-visual parity.
+Use only current, unedited in-engine captures for gameplay imagery. Caption
+each image with its mission and what the player is doing so prospective backers
+can distinguish playable features from future campaign goals.
 
 ## Campaign promise discipline
 

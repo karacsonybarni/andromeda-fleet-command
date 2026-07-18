@@ -1,6 +1,6 @@
 # Validation
 
-Last verified: 10 July 2026.
+Last verified: 18 July 2026.
 
 ## Automated core suite
 
@@ -10,7 +10,7 @@ Command:
 dotnet run --project tests/AndromedaFleetCommand.Core.Tests
 ~~~
 
-Result: **26 tests, 0 failures**.
+Result: **41 tests, 0 failures**.
 
 Coverage includes:
 
@@ -19,6 +19,8 @@ Coverage includes:
 - safe rejection of unknown commands
 - deterministic replay-equivalent simulation
 - all three mission definitions and objective outcomes
+- a complete representative three-mission campaign playthrough through normal
+  parsed orders, manual controls, abilities, tutorial steps, and sequential unlocks
 - sequential campaign unlocks and corrupt-save recovery
 - concise four-beat tutorial ordering, progress, purpose text, and dual-input prompts
 - loopback-only local-AI configuration and corrupt-settings recovery
@@ -26,6 +28,8 @@ Coverage includes:
 - accessibility-setting normalization and corrupt-settings recovery
 - deterministic replay checksums, persistence, and corruption rejection
 - authoritative multiplayer ownership, sequencing, and deterministic snapshot validation
+- cooperative and PvP lobby assignment, malformed-payload rejection, disconnect
+  recovery, and deterministic authoritative sessions
 - manual control and speed limits
 - validated command dispatch
 - tactical-ability cooldowns
@@ -54,6 +58,12 @@ in a normal Godot .NET installation.
 - Automated in-engine smoke battle: passed
 - Six SVG ship assets imported and loaded through Godot's resource pipeline: passed
 - Headless resource leak check after presentation load: passed
+- Live two-process ENet cooperative match: passed
+- Live two-process ENet PvP match: passed
+
+Both multiplayer modes are exercised with separate host and client Godot
+processes. The check requires matching modes, advancing authoritative snapshots,
+clean process exits, and no oversized-packet/MTU warnings.
 
 The release workflow also performs a clean launch of the exported Linux build
 and requires the smoke marker before it uploads either desktop package. This
@@ -81,14 +91,14 @@ checksummed artifacts. Windows remains cross-exported and therefore requires a
 clean Windows launch check before public distribution.
 
 Release workflow run
-[29088052845](https://github.com/karacsonybarni/andromeda-fleet-command/actions/runs/29088052845)
-passed for commit `f054a9dc3c3810b8870e8cd388b16810183a2361`.
+[29506843313](https://github.com/karacsonybarni/andromeda-fleet-command/actions/runs/29506843313)
+passed for commit `23ba9bc21571f49e38b9461142132e2b5215eca2`.
 The downloaded artifact was independently checked after upload:
 
 ~~~text
-GitHub artifact  fc7cc7ee161d2ae8e0cf9a7513df552f1dfbddbdde5cd3cb6a638829695f3244
-Linux archive    0368ddd53b48a50475c57da1b381d300a66a1c13ac2fc68450c42391923b85ab
-Windows archive  47a77e010fbd7ba361d2a58e43f7868c2856ba4a6dafa91d9cad4c4a4ccb0716
+GitHub artifact  93e9e53524b70acf13ef3c4acdaa36ad4d42f94a5af78905ad3b676479bc36f4
+Linux archive    f807a80265911e0902817df40c7d08f1891c50e483bdbb3107e03c3410e947e0
+Windows archive  de56005cf4ac01eb75f89fca23c7cf96eded71403897c54dfb219dbc1e02f558
 ~~~
 
 Both portable checksum entries passed, compressed-file tests passed, and no
