@@ -1,7 +1,7 @@
 # Campaign promise status
 
-This document prevents concept art, implemented demo features, funded milestones,
-and long-term Steam goals from being mixed together in campaign copy.
+This document prevents implemented demo features, funded milestones, and
+long-term Steam goals from being mixed together in campaign copy.
 
 ## Playable now
 
@@ -19,7 +19,9 @@ and long-term Steam goals from being mixed together in campaign copy.
 - Persistent accessibility settings, conflict-safe keyboard/controller remapping, gamepad flight,
   captions, reduced flashes, and crash reports
 - Deterministic replay validation, a headless benchmark, and structured player-feedback forms
-- Optional Steam achievement hooks, authoritative-session validation, and desktop package automation
+- Player-hosted multiplayer for up to four captains, with authoritative co-op and PvP sessions,
+  command validation, bot takeover after disconnects, and checksummed snapshot recovery
+- Optional Steam achievement hooks and desktop package automation
 - Automated core tests and an actual Godot launch smoke test
 
 ## Required before the Indiegogo demo is called complete
@@ -34,10 +36,10 @@ and long-term Steam goals from being mixed together in campaign copy.
 
 ## Steam-alpha or stretch work, not a current demo promise
 
-- Steam lobbies, invitations, cloud synchronization, and Workshop
-- Server-authoritative multiplayer transport, lobbies, and desync recovery
+- Steam lobbies, invitations, relay transport, cloud synchronization, and Workshop
+- Host migration, match reconnection, and adversarial Internet soak testing
 - Ultrawide and localized-subtitle validation
 - Steam Deck verification and public playtest infrastructure
 
-The public campaign page should link to this file and label every generated
-concept image as design intent rather than in-engine footage.
+The public campaign page should link to this file and use current, unedited
+in-engine captures for every gameplay image.
