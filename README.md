@@ -123,7 +123,7 @@ then Y for controller buttons. Conflicting assignments swap and save immediately
 - F6: multiplayer host/join/session panel
 - F10: settings and accessibility
 - F7: run the simulation benchmark
-- F8: open player feedback
+- F8: open the campaign feedback form and reveal the latest pacing report
 - F9: verify the latest saved replay
 - Esc: cancel or quit
 
@@ -149,6 +149,8 @@ This measurement exists to tune the authored 7.5-hour target against real human
 playthroughs. It deliberately does not claim a complete campaign duration until
 the player has won every mission at least once. See
 [docs/QA_PLAYTEST.md](docs/QA_PLAYTEST.md) for the repeatable playtest protocol.
+After any completed attempt, press **F8** to open the dedicated feedback form and
+reveal the report in the operating system's file manager, ready to drag into GitHub.
 
 ### Multiplayer
 
