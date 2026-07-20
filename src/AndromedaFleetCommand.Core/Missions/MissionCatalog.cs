@@ -493,10 +493,13 @@ public static class MissionCatalog
             Player("player-flagship", "Flagship", ShipClass.Flagship, 245, 450),
             Player("player-carrier", "Carrier One", ShipClass.Carrier, 205, 250),
             Player("player-frigate", "Frigate Two", ShipClass.Frigate, 330, 340),
-            Player("player-destroyer", "Destroyer Three", ShipClass.Destroyer, 270, 640),
-            Enemy("enemy-flagship", "Enemy Flagship", ShipClass.Flagship, 1360, 450),
-            Enemy("enemy-carrier-1", "Enemy Carrier One", ShipClass.Carrier, 1380, 235)
+            Player("player-destroyer", "Destroyer Three", ShipClass.Destroyer, 270, 640)
         };
+        if (encounter != Encounter.DestroyerBreak)
+        {
+            ships.Add(Enemy("enemy-flagship", "Enemy Flagship", ShipClass.Flagship, 1360, 450));
+            ships.Add(Enemy("enemy-carrier-1", "Enemy Carrier One", ShipClass.Carrier, 1380, 235));
+        }
 
         var destroyers = encounter == Encounter.DestroyerBreak
             ? level >= 6 ? 3 : 2
@@ -534,10 +537,13 @@ public static class MissionCatalog
         {
             new("player-carrier", OrderType.Defend, "player-flagship"),
             new("player-frigate", OrderType.Intercept, "enemy-bomber-1"),
-            new("player-destroyer", OrderType.Attack, "enemy-flagship"),
-            new("enemy-flagship", OrderType.Hold),
-            new("enemy-carrier-1", OrderType.Defend, "enemy-flagship")
+            new("player-destroyer", OrderType.Attack,
+                ships.Any(ship => ship.Id == "enemy-flagship") ? "enemy-flagship" : "enemy-destroyer-1")
         };
+        if (ships.Any(ship => ship.Id == "enemy-flagship"))
+            orders.Add(new("enemy-flagship", OrderType.Hold));
+        if (ships.Any(ship => ship.Id == "enemy-carrier-1"))
+            orders.Add(new("enemy-carrier-1", OrderType.Defend, "enemy-flagship"));
         if (ships.Any(ship => ship.Id == "enemy-carrier-2"))
             orders.Add(new("enemy-carrier-2", OrderType.Defend, "enemy-flagship"));
         var destroyerTargets = new[]
