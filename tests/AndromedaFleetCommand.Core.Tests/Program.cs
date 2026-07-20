@@ -371,7 +371,7 @@ static void EveryCampaignMissionIsWinnable()
         const int maximumTicks = 60 * 240;
         for (var tick = 0; tick < maximumTicks && simulation.Status == BattleStatus.Active; tick++)
         {
-            if (mission.Id == MissionId.BlackSun && tick == 60 * 8)
+            if (mission.Id != MissionId.FirstCommand && tick % (60 * 8) == 0)
             {
                 var fleetCount = simulation.PlayerFleet.Count;
                 for (var shipIndex = 0; shipIndex < fleetCount; shipIndex++)
@@ -382,8 +382,12 @@ static void EveryCampaignMissionIsWinnable()
                     simulation.TryActivateSelectedAbility();
                     if (simulation.SelectedShip.AbilityCooldown > 0) abilities++;
                 }
-                simulation.SelectPlayerShip(0);
-                shipSwitches++;
+                if (mission.Objective.ProtectedShipId is not null &&
+                    simulation.FindShip(mission.Objective.ProtectedShipId)?.IsAlive == true)
+                {
+                    simulation.SelectShip(mission.Objective.ProtectedShipId);
+                    shipSwitches++;
+                }
             }
             if (tick > 0 && tick % (60 * 12) == 0)
                 foreach (var order in combatOrders) DispatchOrder(order);
