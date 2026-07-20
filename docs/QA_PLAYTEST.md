@@ -1,4 +1,39 @@
-# Act I campaign QA playtest — 2026-07-15
+# Campaign QA and pacing playtest
+
+## Full-campaign human pacing protocol
+
+The game now records every completed single-player campaign attempt automatically.
+Victory and defeat debriefs show active battle time, the mission target, variance,
+and how many of the 24 missions have a measured victory. Multiplayer results are
+excluded. Pauses, mission selection, briefings, and debriefs are not counted, so
+the report measures encounter time rather than a player's reading or break time.
+
+After each terminal result, two files are atomically updated in Godot's user-data directory:
+
+- `campaign-pacing.json` contains the bounded machine-readable attempt history;
+- `campaign-pacing-report.md` is the shareable human-readable report.
+
+Typical directories are `%APPDATA%\Godot\app_userdata\Andromeda Fleet Command\`
+on Windows and `~/.local/share/godot/app_userdata/Andromeda Fleet Command/` on Linux.
+The report withholds a full-campaign duration until all 24 missions have a recorded
+victory, preventing partial runs from being presented as evidence for the 6–8-hour promise.
+
+For a useful external pacing pass:
+
+1. Move any existing `campaign-pacing.json` aside so the pass starts at 0/24 measured missions.
+2. Play on default settings without using debug or benchmark modes. Read briefings normally;
+   do not rush simply to improve the timer.
+3. Finish every mission in order. Keep defeats: retry data is part of difficulty evidence.
+4. After Mission 24, attach `campaign-pacing-report.md` to the playtest feedback together
+   with hardware, input method, prior strategy-game experience, and perceived difficulty.
+5. Repeat with several players before changing targets. Tune missions whose latest times,
+   retry counts, or qualitative feedback consistently disagree with their authored budget.
+
+The 450-minute total remains an authored target until this protocol has external human
+results. Automated simulation victories prove objective reachability and regression safety;
+they are intentionally not substituted for human pacing evidence.
+
+## Historical Act I automated QA — 2026-07-15
 
 ## Scope and method
 

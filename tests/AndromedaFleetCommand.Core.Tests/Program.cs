@@ -26,6 +26,8 @@ var tests = new (string Name, Action Body)[]
     ("Every campaign mission is winnable through representative play", EveryCampaignMissionIsWinnable),
     ("Campaign progression unlocks missions sequentially", CampaignProgressionUnlocksMissions),
     ("Campaign progress persists and recovers safely", CampaignProgressPersistsSafely),
+    ("Campaign pacing telemetry aggregates completed attempts", CampaignPacingTelemetryAggregatesAttempts),
+    ("Campaign pacing telemetry persists and exports a complete report", CampaignPacingTelemetryPersistsAndReports),
     ("Tutorial advances only through intended actions", TutorialAdvancesInOrder),
     ("Local AI configuration enforces local endpoints", LocalAiConfigurationEnforcesLocalEndpoints),
     ("Local AI configuration persists safely", LocalAiConfigurationPersistsSafely),
@@ -517,6 +519,73 @@ static void CampaignProgressPersistsSafely()
         True(actual.IsCompleted(MissionId.FirstCommand), "Completed mission round-trips");
         File.WriteAllText(path, "{not valid json");
         Equal(0, store.Load().HighestUnlockedMission, "Corrupt save falls back safely");
+    }
+    finally
+    {
+        if (Directory.Exists(directory)) Directory.Delete(directory, true);
+    }
+}
+
+static void CampaignPacingTelemetryAggregatesAttempts()
+{
+    var telemetry = CampaignPacingTelemetry.Empty
+        .Record(MissionId.FirstCommand, BattleStatus.EnemyVictory, 1_050)
+        .Record(MissionId.FirstCommand, BattleStatus.PlayerVictory, 930)
+        .Record(MissionId.FirstCommand, BattleStatus.PlayerVictory, 840)
+        .Record(MissionId.FleetDuel, BattleStatus.PlayerVictory, 120)
+        .Record(MissionId.BrokenShield, BattleStatus.Active, 45)
+        .Record(MissionId.BrokenShield, BattleStatus.PlayerVictory, double.NaN);
+
+    var stats = telemetry.StatsFor(MissionId.FirstCommand);
+    Equal(3, stats.Attempts, "Terminal campaign attempts are counted");
+    Equal(2, stats.Victories, "Victories are counted");
+    Equal(1, stats.Defeats, "Defeats are counted");
+    Near(900, stats.TargetSeconds, 1e-9, "Mission target comes from the catalog");
+    Near(840, stats.LatestVictorySeconds ?? -1, 1e-9, "Latest victory is exposed");
+    Near(840, stats.FastestVictorySeconds ?? -1, 1e-9, "Fastest victory is exposed");
+    Near(-60, stats.LatestVarianceSeconds ?? 0, 1e-9, "Variance compares measured and target time");
+    Equal(1, telemetry.MeasuredMissionCount, "Only missions with victories count as measured");
+    Equal(3, telemetry.Attempts.Count, "Non-campaign, active, and non-finite records are ignored");
+
+    for (var attempt = 0; attempt < CampaignPacingTelemetry.MaximumAttemptsPerMission + 5; attempt++)
+        telemetry = telemetry.Record(MissionId.BrokenShield, BattleStatus.EnemyVictory, attempt);
+    Equal(CampaignPacingTelemetry.MaximumAttemptsPerMission,
+        telemetry.StatsFor(MissionId.BrokenShield).Attempts,
+        "Per-mission history remains bounded");
+}
+
+static void CampaignPacingTelemetryPersistsAndReports()
+{
+    var directory = Path.Combine(Path.GetTempPath(), $"afc-pacing-tests-{Guid.NewGuid():N}");
+    var telemetryPath = Path.Combine(directory, "campaign-pacing.json");
+    var reportPath = Path.Combine(directory, "campaign-pacing-report.md");
+    try
+    {
+        var expected = CampaignPacingTelemetry.Empty;
+        foreach (var mission in MissionCatalog.All)
+            expected = expected.Record(mission.Id, BattleStatus.PlayerVictory, mission.EstimatedMinutes * 60);
+
+        var store = new CampaignPacingTelemetryStore(telemetryPath);
+        store.Save(expected);
+        var actual = store.Load();
+        Equal(MissionCatalog.All.Count, actual.MeasuredMissionCount,
+            "Every successful mission round-trips");
+        True(actual.HasCompleteCampaignMeasurement, "A complete pacing pass is recognized");
+        Near(27_000, actual.MeasuredVictorySeconds, 1e-9,
+            "Measured campaign total uses latest victories");
+
+        CampaignPacingReport.Save(reportPath, actual);
+        var report = File.ReadAllText(reportPath);
+        True(report.Contains("24/24 missions", StringComparison.Ordinal),
+            "Report states measurement coverage");
+        True(report.Contains("Latest successful playthrough total: **7:30:00** (+00:00)",
+                StringComparison.Ordinal),
+            "Report states measured duration and variance");
+        True(report.Contains("| 24 | One Command |", StringComparison.Ordinal),
+            "Report includes the final mission");
+
+        File.WriteAllText(telemetryPath, "{not valid json");
+        Equal(0, store.Load().Attempts.Count, "Corrupt telemetry falls back safely");
     }
     finally
     {

@@ -16,6 +16,7 @@ long-term Steam goals from being mixed together in campaign copy.
 - Explicit command-complexity progression from orientation and split defence through interceptions,
   coalition battles, fighting withdrawals, and full-fleet assaults
 - Mission-specific objectives, protected-ship failure conditions, unlocks, and local saves
+- Automatic per-mission attempts, outcomes, active-time telemetry, and a shareable Markdown pacing report
 - Guided first mission and procedural tactical audio cues
 - Persistent accessibility settings, conflict-safe keyboard/controller remapping, gamepad flight,
   captions, reduced flashes, and crash reports
