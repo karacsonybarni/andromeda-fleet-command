@@ -536,8 +536,11 @@ public static class MissionCatalog
         };
         if (ships.Any(ship => ship.Id == "enemy-carrier-2"))
             orders.Add(new("enemy-carrier-2", OrderType.Defend, "enemy-flagship"));
+        var destroyerTargets = new[] { "player-flagship", "player-destroyer" };
+        var destroyerIndex = 0;
         foreach (var ship in ships.Where(ship => ship.Team == Team.Enemy && ship.Class == ShipClass.Destroyer))
-            orders.Add(new(ship.Id, OrderType.Attack, "player-flagship"));
+            orders.Add(new(ship.Id, OrderType.Attack,
+                destroyerTargets[destroyerIndex++ % destroyerTargets.Length]));
         foreach (var ship in ships.Where(ship => ship.Team == Team.Enemy && ship.Class == ShipClass.Bomber))
             orders.Add(new(ship.Id, OrderType.Attack, protectedShipId));
         var escortTargets = new[] { "player-frigate", "player-destroyer" };
