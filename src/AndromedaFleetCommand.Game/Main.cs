@@ -50,6 +50,9 @@ public sealed partial class Main : Node2D
     private bool _smokeTest;
     private CampaignProgressStore? _progressStore;
     private CampaignProgress _progress = CampaignProgress.New;
+    private CampaignPacingTelemetryStore? _pacingStore;
+    private CampaignPacingTelemetry _pacing = CampaignPacingTelemetry.Empty;
+    private string _pacingReportPath = string.Empty;
     private TutorialTracker _tutorial = new();
     private bool _showMissionSelect;
     private int _missionSelectionIndex;
@@ -146,6 +149,9 @@ public sealed partial class Main : Node2D
         _platform = PlatformServicesFactory.Create();
         _progressStore = new(ProjectSettings.GlobalizePath("user://campaign-progress.json"));
         _progress = _progressStore.Load();
+        _pacingStore = new(ProjectSettings.GlobalizePath("user://campaign-pacing.json"));
+        _pacing = _pacingStore.Load();
+        _pacingReportPath = ProjectSettings.GlobalizePath("user://campaign-pacing-report.md");
         CreateStars();
         LoadShipArt();
         CreateCommandLine();
@@ -1736,6 +1742,7 @@ public sealed partial class Main : Node2D
             return;
         }
         SaveCompletedReplay();
+        RecordCampaignPacing();
         if (_simulation.Status == BattleStatus.EnemyVictory)
         {
             PlayCue(TacticalCue.Defeat, "Mission failed: protected ship lost");
@@ -1759,6 +1766,25 @@ public sealed partial class Main : Node2D
         AddLog(current + 1 < MissionCatalog.All.Count
             ? $"Mission complete. Mission {current + 2} unlocked."
             : "Crown of Andromeda campaign complete.");
+    }
+
+    private void RecordCampaignPacing()
+    {
+        _pacing = _pacing.Record(_simulation.Mission.Id, _simulation.Status, _simulation.ElapsedSeconds);
+        try
+        {
+            _pacingStore?.Save(_pacing);
+            if (!string.IsNullOrWhiteSpace(_pacingReportPath))
+                CampaignPacingReport.Save(_pacingReportPath, _pacing);
+        }
+        catch (Exception error) when (error is IOException or UnauthorizedAccessException)
+        {
+            GD.PushWarning($"Could not save campaign pacing report: {error.Message}");
+        }
+
+        var stats = _pacing.StatsFor(_simulation.Mission.Id);
+        AddLog($"PLAYTEST  {CampaignPacingReport.FormatDuration(_simulation.ElapsedSeconds)} active • " +
+               $"{stats.Attempts} attempt{(stats.Attempts == 1 ? string.Empty : "s")} recorded.");
     }
 
     private bool LocalPlayerWon()
@@ -2910,6 +2936,16 @@ public sealed partial class Main : Node2D
             800, 475, 14, color, 900);
         DrawCenteredLabel(mission.Complexity.TacticalFocus, 800, 508, 13,
             new Color("9fc5d6"), 900);
+        var pacing = _pacing.StatsFor(mission.Id);
+        DrawCenteredLabel(
+            $"PLAYTEST  •  {CampaignPacingReport.FormatDuration(_simulation.ElapsedSeconds)} ACTIVE  •  " +
+            $"TARGET {CampaignPacingReport.FormatDuration(pacing.TargetSeconds)}  •  " +
+            CampaignPacingReport.FormatVariance(_simulation.ElapsedSeconds - pacing.TargetSeconds),
+            800, 562, 14, new Color("ffd065"), 900);
+        DrawCenteredLabel(
+            $"CAMPAIGN MEASURED {_pacing.MeasuredMissionCount}/{MissionCatalog.All.Count}  •  " +
+            "REPORT: campaign-pacing-report.md",
+            800, 594, 12, new Color("87b5ca"), 900);
         DrawCenteredLabel(instruction, 800, 675, 13, new Color("87b5ca"), 1000);
     }
 

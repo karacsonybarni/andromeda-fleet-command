@@ -36,6 +36,7 @@ build.
   projectile bloom, layered shield/thruster effects, impact sparks, explosions, and restrained camera kick
 - A four-beat, controller-aware Captain's Drill that teaches the game by doing
 - Mission briefings, unlocks, and persistent campaign progress
+- Automatic mission attempt, outcome, and active-time telemetry with an exportable pacing report
 - Four switchable allied ships with different handling and tactical abilities
 - Manual thrust, steering, and weapons
 - Natural-language typed fleet commands
@@ -135,6 +136,19 @@ All ships, attack the enemy flagship
 Destroyer Three, retreat
 Flagship, move north
 ~~~
+
+### Campaign playtest report
+
+Every completed single-player mission attempt updates `campaign-pacing-report.md`
+in the Godot user-data directory. The victory/defeat debrief shows the attempt's
+active time, authored target, variance, and full-campaign measurement coverage.
+The report tracks wins, losses, latest successful times, and fastest successful
+times for all 24 missions; pauses and menus do not inflate active battle time.
+
+This measurement exists to tune the authored 7.5-hour target against real human
+playthroughs. It deliberately does not claim a complete campaign duration until
+the player has won every mission at least once. See
+[docs/QA_PLAYTEST.md](docs/QA_PLAYTEST.md) for the repeatable playtest protocol.
 
 ### Multiplayer
 

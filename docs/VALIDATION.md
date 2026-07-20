@@ -10,7 +10,7 @@ Command:
 dotnet run --project tests/AndromedaFleetCommand.Core.Tests
 ~~~
 
-Result: **41 tests, 0 failures**.
+Result: **43 tests, 0 failures**.
 
 Coverage includes:
 
@@ -22,6 +22,8 @@ Coverage includes:
 - a complete representative 24-mission campaign playthrough through normal
   parsed orders, manual controls, abilities, tutorial steps, and sequential unlocks
 - sequential campaign unlocks and corrupt-save recovery
+- bounded campaign pacing telemetry, corrupt-data recovery, full-coverage detection,
+  duration/variance aggregation, and deterministic Markdown report export
 - concise four-beat tutorial ordering, progress, purpose text, and dual-input prompts
 - loopback-only local-AI configuration and corrupt-settings recovery
 - GPU-preferred local inference defaults and legacy-settings migration
