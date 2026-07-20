@@ -21,6 +21,7 @@
 - [x] Connected eight-act storyline with mission briefings, victory debriefs, and failure beats
 - [x] Encode a 450-minute campaign pacing target across 15–23-minute missions
 - [x] Record real mission attempts and active playtime, with an exportable campaign pacing report
+- [x] One-keystroke playtest handoff that opens feedback and reveals the pacing report
 - [ ] Validate and tune the complete campaign to 6–8 hours using external human playtest data
 - [x] Procedural acknowledgements, weapons, abilities, tactical alerts, and victory cues
 - [x] Original seamless background theme with a recognizable melodic hook

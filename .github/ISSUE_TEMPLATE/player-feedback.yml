@@ -1,13 +1,56 @@
 name: Player feedback
-description: Share campaign, controls, balance, accessibility, or voice-command feedback.
+description: Share campaign pacing, controls, balance, accessibility, multiplayer, or voice-command feedback.
 title: "[Feedback] "
 labels: [feedback]
 body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve Andromeda Fleet Command. Press F8 in-game after a mission to open this form and reveal the generated pacing report for attachment.
   - type: dropdown
+    id: area
+    attributes:
+      label: Act or area
+      options:
+        - Captain's Drill or setup
+        - Act I — The Black Sun Incident (Missions 1–3)
+        - Act II — Crown Wakes (Missions 4–6)
+        - Act III — The Seed War (Missions 7–9)
+        - Act IV — The Divided Fleet (Missions 10–12)
+        - Act V — The Ketzal Truth (Missions 13–15)
+        - Act VI — Eventide (Missions 16–18)
+        - Act VII — The Last Transit (Missions 19–21)
+        - Act VIII — The Andromeda Accord (Missions 22–24)
+        - Multiplayer
+        - Menus, local AI, or accessibility
+        - Whole campaign
+    validations:
+      required: true
+  - type: input
     id: mission
     attributes:
-      label: Mission
-      options: [First Command, Broken Shield, Black Sun, Menus or setup, Whole demo]
+      label: Mission number and title
+      placeholder: e.g. 11 — Mutiny at Lyra
+  - type: dropdown
+    id: outcome
+    attributes:
+      label: Outcome
+      options:
+        - Victory
+        - Defeat
+        - Did not finish
+        - Not mission-specific
+    validations:
+      required: true
+  - type: dropdown
+    id: input
+    attributes:
+      label: Primary input method
+      options:
+        - Keyboard and mouse
+        - Controller
+        - Typed fleet commands
+        - Local voice commands
+        - Mixed
     validations:
       required: true
   - type: textarea
@@ -27,6 +70,18 @@ body:
     attributes:
       label: Time until your first successful command
       placeholder: e.g. 70 seconds
+  - type: textarea
+    id: pacing-report
+    attributes:
+      label: Campaign pacing report
+      description: Drag campaign-pacing-report.md into this box. F8 selects it automatically after any completed mission. The report contains no voice recordings or hosted-model data.
+      placeholder: Drag the report here, or paste the relevant mission row.
+  - type: textarea
+    id: system
+    attributes:
+      label: System and playtest context
+      description: Include Windows/Linux, CPU, GPU, RAM, controller, prior strategy-game experience, and any accessibility settings that affected pacing.
+      placeholder: Windows 11, Ryzen 5, RTX 3060, 16 GB RAM, Xbox controller, frequent strategy-game player
   - type: textarea
     id: improvement
     attributes:

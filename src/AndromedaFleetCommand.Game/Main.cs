@@ -12,6 +12,9 @@ namespace AndromedaFleetCommand.Game;
 
 public sealed partial class Main : Node2D
 {
+    private const string PlayerFeedbackUrl =
+        "https://github.com/karacsonybarni/andromeda-fleet-command/issues/new?template=player-feedback.yml";
+
     private Color Cyan => _settings.ColorMode switch
     {
         ColorVisionMode.Deuteranopia => new("3295ff"),
@@ -600,8 +603,7 @@ public sealed partial class Main : Node2D
                     RunBenchmark(false);
                     break;
                 case Key.F8:
-                    OS.ShellOpen("https://github.com/karacsonybarni/andromeda-fleet-command/issues/new/choose");
-                    SetStatus("Opened the feedback form");
+                    OpenPlayerFeedback();
                     break;
                 case Key.F9:
                     ValidateLatestReplay();
@@ -612,6 +614,20 @@ public sealed partial class Main : Node2D
             }
         }
         GetViewport().SetInputAsHandled();
+    }
+
+    private void OpenPlayerFeedback()
+    {
+        var reportRevealed = false;
+        if (!string.IsNullOrWhiteSpace(_pacingReportPath) && File.Exists(_pacingReportPath))
+            reportRevealed = OS.ShellShowInFileManager(_pacingReportPath, false) == Error.Ok;
+
+        var browserOpened = OS.ShellOpen(PlayerFeedbackUrl) == Error.Ok;
+        SetStatus(browserOpened
+            ? reportRevealed
+                ? "Opened player feedback and selected the pacing report"
+                : "Opened player feedback • complete a mission to generate a pacing report"
+            : "Could not open the browser • use the feedback link in README.md");
     }
 
     public override void _Draw()
@@ -2944,7 +2960,7 @@ public sealed partial class Main : Node2D
             800, 562, 14, new Color("ffd065"), 900);
         DrawCenteredLabel(
             $"CAMPAIGN MEASURED {_pacing.MeasuredMissionCount}/{MissionCatalog.All.Count}  •  " +
-            "REPORT: campaign-pacing-report.md",
+            "F8 FEEDBACK + REVEAL REPORT",
             800, 594, 12, new Color("87b5ca"), 900);
         DrawCenteredLabel(instruction, 800, 675, 13, new Color("87b5ca"), 1000);
     }

@@ -24,8 +24,9 @@ For a useful external pacing pass:
 2. Play on default settings without using debug or benchmark modes. Read briefings normally;
    do not rush simply to improve the timer.
 3. Finish every mission in order. Keep defeats: retry data is part of difficulty evidence.
-4. After Mission 24, attach `campaign-pacing-report.md` to the playtest feedback together
-   with hardware, input method, prior strategy-game experience, and perceived difficulty.
+4. After Mission 24, press **F8**. The game opens the dedicated campaign feedback form
+   and reveals `campaign-pacing-report.md` in the file manager, ready to drag into the
+   form. Include hardware, input method, prior strategy-game experience, and perceived difficulty.
 5. Repeat with several players before changing targets. Tune missions whose latest times,
    retry counts, or qualitative feedback consistently disagree with their authored budget.
 
