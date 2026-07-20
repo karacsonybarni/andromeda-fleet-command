@@ -37,6 +37,12 @@ jobs:
           editor="$(find /tmp/godot -type f -name 'Godot_*mono_linux.x86_64' | head -1)"
           chmod +x "$editor"
           echo "GODOT_EDITOR=$editor" >> "$GITHUB_ENV"
+      - name: Install media tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends ffmpeg
       - name: Build and render deterministic gameplay
         shell: bash
         run: |
@@ -47,7 +53,7 @@ jobs:
           mkdir -p trailer
           log="$(mktemp)"
           HOME="$(mktemp -d)" LIBGL_ALWAYS_SOFTWARE=1 \
-            timeout 240s xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24 -ac" \
+            timeout 480s xvfb-run --auto-servernum --server-args="-screen 0 1920x1080x24 -ac" \
             "$GODOT_EDITOR" --path . --resolution 1920x1080 --write-movie \
             "$PWD/trailer/andromeda-fleet-command.avi" --fixed-fps 30 -- --trailer 2>&1 | tee "$log"
           grep -q "AFC_TRAILER_PASS" "$log"
