@@ -508,8 +508,10 @@ public static class MissionCatalog
             ShipClass.Carrier, 1380, 675));
         var bombers = encounter == Encounter.BomberDefence
             ? 4
-            : encounter == Encounter.DestroyerBreak ? 1 : level >= 5 ? 3 : 2;
-        var escorts = level >= 3 ? 2 : 1;
+            : encounter == Encounter.DestroyerBreak ? 0 : level >= 5 ? 3 : 2;
+        var escorts = encounter == Encounter.DestroyerBreak
+            ? level >= 6 ? 1 : 0
+            : level >= 3 ? 2 : 1;
         if (encounter == Encounter.DestroyerBreak && level >= 6) destroyers++;
 
         var destroyerPositions = new[] { new Vector2D(1240, 305), new Vector2D(1260, 620),
@@ -536,7 +538,8 @@ public static class MissionCatalog
         var orders = new List<InitialOrder>
         {
             new("player-carrier", OrderType.Defend, "player-flagship"),
-            new("player-frigate", OrderType.Intercept, "enemy-bomber-1"),
+            new("player-frigate", OrderType.Intercept,
+                ships.Any(ship => ship.Id == "enemy-bomber-1") ? "enemy-bomber-1" : "enemy-destroyer-1"),
             new("player-destroyer", OrderType.Attack,
                 ships.Any(ship => ship.Id == "enemy-flagship") ? "enemy-flagship" : "enemy-destroyer-1")
         };
