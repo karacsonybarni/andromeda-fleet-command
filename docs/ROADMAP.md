@@ -17,9 +17,10 @@
 - [x] Replace procedural silhouettes with a coherent six-class scalable vector fleet set
 - [x] Combat-readability pass with targeting, projectile, shield, thruster, impact, and destruction VFX
 - [ ] Final art-direction, animation, VFX, and store-quality capture pass
-- [x] Three playable missions with escalating objectives and command complexity
-- [x] Connected three-chapter storyline with mission briefings, victory debriefs, and failure beats
-- [ ] Tune each mission to 8–12 minutes using external playtest data
+- [x] 24 playable missions with escalating objectives and command complexity
+- [x] Connected eight-act storyline with mission briefings, victory debriefs, and failure beats
+- [x] Encode a 450-minute campaign pacing target across 15–23-minute missions
+- [ ] Validate and tune the complete campaign to 6–8 hours using external human playtest data
 - [x] Procedural acknowledgements, weapons, abilities, tactical alerts, and victory cues
 - [x] Original seamless background theme with a recognizable melodic hook
 - [x] Layered procedural stereo combat feedback and mix pass
@@ -29,7 +30,7 @@
 - [x] In-game local-AI readiness diagnostics, Ollama pull, and speech-model download
 - [x] Bundle verified whisper.cpp executables for one-click Windows/Linux voice setup
 - [ ] Performance capture on Steam Deck and mid-range Windows hardware
-- [x] Reproducible three-mission simulation benchmark harness
+- [x] Reproducible campaign-wide simulation benchmark harness
 - [x] Automatic local crash reports
 - [x] Structured in-game GitHub feedback and bug-report forms
 - [ ] Trailer capture

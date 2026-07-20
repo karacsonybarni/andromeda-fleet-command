@@ -4,10 +4,33 @@ namespace AndromedaFleetCommand.Core.Missions;
 
 public enum MissionId
 {
-    FirstCommand,
-    BrokenShield,
-    BlackSun,
-    FleetDuel
+    FirstCommand = 0,
+    BrokenShield = 1,
+    BlackSun = 2,
+    Afterglow = 4,
+    SilentRelay = 5,
+    Crownfall = 6,
+    HollowMoon = 7,
+    ThiefOfSuns = 8,
+    FoundryZero = 9,
+    FalseOrders = 10,
+    MutinyAtLyra = 11,
+    SerasChoice = 12,
+    PrisonerSignal = 13,
+    GardenOfStone = 14,
+    EnemyOfMyEnemy = 15,
+    DarkNursery = 16,
+    GravitysChoir = 17,
+    TheFirstSeed = 18,
+    HomewardFire = 19,
+    TheLongRetreat = 20,
+    GateOfKnives = 21,
+    CrownFleet = 22,
+    ChoiceAtNysa = 23,
+    OneCommand = 24,
+
+    // Keep the original wire/replay value for this non-campaign scenario.
+    FleetDuel = 3
 }
 
 public enum MissionObjectiveKind
@@ -62,7 +85,8 @@ public sealed record MissionDefinition(
     IReadOnlyList<InitialOrder> InitialOrders,
     MissionObjective Objective,
     MissionNarrative Narrative,
-    MissionComplexity Complexity);
+    MissionComplexity Complexity,
+    int EstimatedMinutes);
 
 public readonly record struct MissionObjectiveProgress(
     string Label,

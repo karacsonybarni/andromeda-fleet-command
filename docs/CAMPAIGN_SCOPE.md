@@ -12,8 +12,9 @@ long-term Steam goals from being mixed together in campaign copy.
 - Typed natural-language orders with a safe offline parser
 - Optional local Ollama interpretation and packaged whisper.cpp push-to-talk adapters
 - In-game readiness diagnostics, Ollama model pull, whisper-cli discovery, and speech-model download
-- A connected three-chapter storyline, *The Black Sun Incident*: First Command, Broken Shield, and Black Sun
-- Explicit command-complexity progression: orientation, split defence, then full-fleet coordination
+- A connected eight-act, 24-mission storyline, *Crown of Andromeda*, targeting 450 minutes (7.5 hours)
+- Explicit command-complexity progression from orientation and split defence through interceptions,
+  coalition battles, fighting withdrawals, and full-fleet assaults
 - Mission-specific objectives, protected-ship failure conditions, unlocks, and local saves
 - Guided first mission and procedural tactical audio cues
 - Persistent accessibility settings, conflict-safe keyboard/controller remapping, gamepad flight,
@@ -28,7 +29,7 @@ long-term Steam goals from being mixed together in campaign copy.
 
 - Final art-direction, animation, VFX, and capture polish on the coherent vector fleet set
 - Measured voice/model latency requirements on supported hardware
-- Mission-duration balancing from external playtests
+- Human-validated mission-duration and difficulty balancing across the complete 6–8-hour campaign
 - Professional audio mix and voice performances
 - Owner-signed and clean-machine-verified Windows and Linux demo packages
 - Steam Deck and mid-range Windows performance evidence
