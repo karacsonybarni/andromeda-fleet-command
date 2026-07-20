@@ -1,6 +1,6 @@
 # Validation
 
-Last verified: 18 July 2026.
+Last verified: 20 July 2026.
 
 ## Automated core suite
 
@@ -92,14 +92,14 @@ on a native GitHub-hosted operating system before the workflow can pass. The
 Windows launch also verifies the bundled whisper.cpp executable.
 
 Release workflow run
-[29506843313](https://github.com/karacsonybarni/andromeda-fleet-command/actions/runs/29506843313)
-passed for commit `23ba9bc21571f49e38b9461142132e2b5215eca2`.
+[29721897182](https://github.com/karacsonybarni/andromeda-fleet-command/actions/runs/29721897182)
+passed for commit `651531084245c3682d0706c1e6fd78b9571b0663`.
 The downloaded artifact was independently checked after upload:
 
 ~~~text
-GitHub artifact  93e9e53524b70acf13ef3c4acdaa36ad4d42f94a5af78905ad3b676479bc36f4
-Linux archive    f807a80265911e0902817df40c7d08f1891c50e483bdbb3107e03c3410e947e0
-Windows archive  de56005cf4ac01eb75f89fca23c7cf96eded71403897c54dfb219dbc1e02f558
+GitHub artifact  6d343aa63dea7e8df1a67f15170a09855ed7ea561564a22e220d102452538eb6
+Linux archive    a63547a32bb9ee2f9d067b45d4737b13c7c3ff611fca0b1dd830a2987452d5ae
+Windows archive  e70b22a8458798ee0fe4d85108a7be2a0ce524a083dce168446268660fd9a9bb
 ~~~
 
 Both portable checksum entries passed, compressed-file tests passed, and no
