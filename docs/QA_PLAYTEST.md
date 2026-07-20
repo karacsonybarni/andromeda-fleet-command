@@ -1,8 +1,9 @@
-# Campaign QA playtest — 2026-07-15
+# Act I campaign QA playtest — 2026-07-15
 
 ## Scope and method
 
-This pass used the real fixed-step battle simulation, mission catalog, tutorial tracker,
+This historical pass covered the original three-mission Black Sun incident, now Act I
+of the 24-mission *Crown of Andromeda* campaign. It used the real fixed-step battle simulation, mission catalog, tutorial tracker,
 manual helm/fire inputs, rule-based command parser, command dispatcher, ship switching,
 tactical abilities, mission objectives, protected-ship failure rules, and sequential
 campaign unlocks. It ran from clean Linux CI processes at accelerated execution speed.
@@ -71,6 +72,8 @@ outcomes, and survivor counts. Its wall times were 27ms, 52ms, and 79ms.
 
 ## Remaining manual QA
 
+- Play the full eight-act campaign at human speed and tune the current 450-minute
+  encounter budget into a measured 6–8-hour completion window.
 - Run the Windows package on a native Windows machine with keyboard and controller.
 - Confirm perceived difficulty at human input speed; the final hull margins in First
   Command and Broken Shield are intentionally narrow and may need accessibility tuning.

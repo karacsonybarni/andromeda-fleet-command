@@ -17,8 +17,8 @@ dedicated server process: the captain who hosts is both a player and the authori
 2. Enter a captain name.
 3. Host with **H** for co-op or **V** for versus. The default port is UDP 7777.
 4. Other captains enter the host address as `address:port` and press **J**.
-5. The host can press **M** to change mode, press **1–3** to choose a co-op mission, and press **Enter** to
-   start.
+5. The host can press **M** to change mode, use **Left/Right** to cycle all campaign missions
+   (**1–3** are quick shortcuts), and press **Enter** to start.
 6. During a completed match, the host can press **R** for a synchronized rematch. Press **F6**, then **D**
    to disconnect.
 

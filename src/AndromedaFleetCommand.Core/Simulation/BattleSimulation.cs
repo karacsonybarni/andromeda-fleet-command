@@ -94,7 +94,9 @@ public sealed class BattleSimulation
             var remaining = _ships.Count(ship => ship.IsAlive && ship.Team == Team.Enemy &&
                                                   ship.Class == objective.TargetClass);
             var classRatio = _objectiveTotal == 0 ? 0 : (double)remaining / _objectiveTotal;
-            return new($"{remaining}/{_objectiveTotal} bombers remaining", classRatio, remaining, _objectiveTotal);
+            var targetName = objective.TargetClass?.ToString().ToLowerInvariant() ?? "targets";
+            return new($"{remaining}/{_objectiveTotal} {targetName} ships remaining",
+                classRatio, remaining, _objectiveTotal);
         }
     }
 

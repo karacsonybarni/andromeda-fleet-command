@@ -52,6 +52,7 @@ public sealed partial class Main : Node2D
     private CampaignProgress _progress = CampaignProgress.New;
     private TutorialTracker _tutorial = new();
     private bool _showMissionSelect;
+    private int _missionSelectionIndex;
     private BattleStatus _observedBattleStatus = BattleStatus.Active;
     private int _previousProjectileCount;
     private double _weaponAudioCooldown;
@@ -496,10 +497,37 @@ public sealed partial class Main : Node2D
 
         if (_showMissionSelect)
         {
-            if (IsActionKey(key.Keycode, GameActionIds.Missions) || key.Keycode == Key.Escape)
-                _showMissionSelect = false;
-            else if (key.Keycode is Key.Key1 or Key.Key2 or Key.Key3)
-                LoadMission((int)key.Keycode - (int)Key.Key1);
+            switch (key.Keycode)
+            {
+                case Key.Escape:
+                    _showMissionSelect = false;
+                    break;
+                case Key.Up:
+                    MoveMissionSelection(-1);
+                    break;
+                case Key.Down:
+                    MoveMissionSelection(1);
+                    break;
+                case Key.Left:
+                    MoveMissionSelection(-6);
+                    break;
+                case Key.Right:
+                    MoveMissionSelection(6);
+                    break;
+                case Key.Enter:
+                case Key.KpEnter:
+                    LoadMission(_missionSelectionIndex);
+                    break;
+                case >= Key.Key1 and <= Key.Key6:
+                {
+                    var pageStart = _missionSelectionIndex / 6 * 6;
+                    LoadMission(pageStart + (int)key.Keycode - (int)Key.Key1);
+                    break;
+                }
+                default:
+                    if (IsActionKey(key.Keycode, GameActionIds.Missions)) _showMissionSelect = false;
+                    break;
+            }
             GetViewport().SetInputAsHandled();
             return;
         }
@@ -532,7 +560,7 @@ public sealed partial class Main : Node2D
         else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Missions))
         {
             if (_multiplayer?.IsInMatch == true) SetStatus("Mission selection is controlled by the host lobby");
-            else _showMissionSelect = true;
+            else OpenMissionSelect();
         }
         else if (!_showHelp && _multiplayer?.IsInMatch != true &&
                  _simulation.Status == BattleStatus.PlayerVictory &&
@@ -762,6 +790,16 @@ public sealed partial class Main : Node2D
                 SetStatus(_multiplayer.SetCooperativeMission(
                     MissionCatalog.All[(int)key - (int)Key.Key1].Id).Message);
                 break;
+            case Key.Left:
+            case Key.Right:
+            {
+                if (_multiplayer.Lobby?.Mode != MultiplayerMode.Cooperative) break;
+                var current = MissionCatalog.IndexOf(_multiplayer.Lobby.MissionId);
+                var offset = key == Key.Right ? 1 : -1;
+                var nextMission = (current + offset + MissionCatalog.All.Count) % MissionCatalog.All.Count;
+                SetStatus(_multiplayer.SetCooperativeMission(MissionCatalog.All[nextMission].Id).Message);
+                break;
+            }
         }
     }
 
@@ -1048,7 +1086,30 @@ public sealed partial class Main : Node2D
         }
         if (_showMissionSelect)
         {
-            if (button is JoyButton.Back or JoyButton.B or JoyButton.X) _showMissionSelect = false;
+            switch (button)
+            {
+                case JoyButton.Back:
+                case JoyButton.B:
+                case JoyButton.X:
+                    _showMissionSelect = false;
+                    break;
+                case JoyButton.DpadUp:
+                    MoveMissionSelection(-1);
+                    break;
+                case JoyButton.DpadDown:
+                    MoveMissionSelection(1);
+                    break;
+                case JoyButton.DpadLeft:
+                    MoveMissionSelection(-6);
+                    break;
+                case JoyButton.DpadRight:
+                    MoveMissionSelection(6);
+                    break;
+                case JoyButton.A:
+                case JoyButton.Start:
+                    LoadMission(_missionSelectionIndex);
+                    break;
+            }
             return;
         }
         if (_showHelp)
@@ -1072,7 +1133,7 @@ public sealed partial class Main : Node2D
         else if (IsGamepadButton(button, GamepadActionIds.Missions))
         {
             if (_multiplayer?.IsInMatch == true) SetStatus("Mission selection is controlled by the host lobby");
-            else _showMissionSelect = true;
+            else OpenMissionSelect();
         }
         else if (IsGamepadButton(button, GamepadActionIds.Pause))
         {
@@ -1437,7 +1498,8 @@ public sealed partial class Main : Node2D
 
     private void RunBenchmark(bool quitWhenComplete)
     {
-        const int ticksPerMission = 60 * 180;
+        const int totalBenchmarkTicks = 60 * 180 * 3;
+        var ticksPerMission = totalBenchmarkTicks / MissionCatalog.All.Count;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         var ticks = 0;
         foreach (var mission in MissionCatalog.All)
@@ -1611,6 +1673,20 @@ public sealed partial class Main : Node2D
         SetStatus("Fleet ready");
     }
 
+    private void OpenMissionSelect()
+    {
+        _missionSelectionIndex = _simulation.Mission.Id == MissionId.FleetDuel
+            ? Math.Clamp(_progress.HighestUnlockedMission, 0, MissionCatalog.All.Count - 1)
+            : MissionCatalog.IndexOf(_simulation.Mission.Id);
+        _showMissionSelect = true;
+    }
+
+    private void MoveMissionSelection(int offset)
+    {
+        _missionSelectionIndex = Math.Clamp(_missionSelectionIndex + offset, 0,
+            MissionCatalog.All.Count - 1);
+    }
+
     private void LoadMission(int missionIndex)
     {
         if (_multiplayer?.IsInMatch == true)
@@ -1682,7 +1758,7 @@ public sealed partial class Main : Node2D
         var current = MissionCatalog.IndexOf(_simulation.Mission.Id);
         AddLog(current + 1 < MissionCatalog.All.Count
             ? $"Mission complete. Mission {current + 2} unlocked."
-            : "Campaign demo complete.");
+            : "Crown of Andromeda campaign complete.");
     }
 
     private bool LocalPlayerWon()
@@ -2436,7 +2512,7 @@ public sealed partial class Main : Node2D
                 : BindingLabel(GameActionIds.Missions);
             var next = index + 1 < MissionCatalog.All.Count
                 ? $"Press {nextKey} for the next mission • {restart} to replay • {missions} for mission select"
-                : $"Campaign demo complete • {restart} to replay • {missions} for mission select";
+                : $"Crown of Andromeda complete • {restart} to replay • {missions} for mission select";
             DrawStoryOutcome("VICTORY", _simulation.Mission.Narrative.VictoryLines,
                 next, new Color("48eba9"));
         }
@@ -2531,7 +2607,7 @@ public sealed partial class Main : Node2D
         {
             DrawCenteredLabel(canStart ? "ENTER  START MATCH" : "VERSUS NEEDS A SECOND CAPTAIN",
                 800, 674, 16, canStart ? new Color("48eba9") : new Color("ffad55"), 700);
-            DrawCenteredLabel("M toggles co-op / versus • co-op: 1–3 chooses mission • D closes lobby",
+            DrawCenteredLabel("M toggles mode • co-op: ←/→ cycles campaign, 1–3 quick select • D closes",
                 800, 715, 13, new Color("ffd065"), 760);
         }
         else
@@ -2640,31 +2716,51 @@ public sealed partial class Main : Node2D
     private void DrawMissionSelect()
     {
         DrawRect(new(0, 0, 1600, 900), new Color(0, 0.015f, 0.04f, 0.82f));
-        DrawPanel(new(390, 130, 820, 620));
-        DrawCenteredLabel("THE BLACK SUN INCIDENT", 800, 198, 34, Colors.White, 700);
-        DrawCenteredLabel("A three-chapter Andromeda Fleet Command story", 800, 230, 15,
-            new Color("99d3e9"), 700);
+        DrawPanel(new(350, 70, 900, 760));
+        DrawCenteredLabel("CROWN OF ANDROMEDA", 800, 128, 34, Colors.White, 780);
+        DrawCenteredLabel("Eight acts • 24 missions • 6–8 hour story campaign", 800, 160, 15,
+            new Color("99d3e9"), 780);
 
-        for (var index = 0; index < MissionCatalog.All.Count; index++)
+        const int missionsPerPage = 6;
+        var page = _missionSelectionIndex / missionsPerPage;
+        var pageCount = (MissionCatalog.All.Count + missionsPerPage - 1) / missionsPerPage;
+        var pageStart = page * missionsPerPage;
+        var pageEnd = Math.Min(pageStart + missionsPerPage, MissionCatalog.All.Count);
+        DrawCenteredLabel($"PAGE {page + 1}/{pageCount}  •  MISSIONS {pageStart + 1}–{pageEnd}",
+            800, 192, 12, new Color("ffd065"), 760);
+
+        for (var index = pageStart; index < pageEnd; index++)
         {
             var mission = MissionCatalog.All[index];
             var unlocked = _progress.IsUnlocked(index);
             var completed = _progress.IsCompleted(mission.Id);
-            var y = 290 + index * 120;
-            DrawPanel(new(455, y - 35, 690, 92));
-            DrawLabel($"{index + 1}", new(485, y + 10), 28, unlocked ? Cyan : new Color("566a73"));
-            DrawLabel(mission.Title.ToUpperInvariant(), new(545, y - 1), 19,
+            var selected = index == _missionSelectionIndex;
+            var row = index - pageStart;
+            var y = 252 + row * 82;
+            if (selected) DrawRect(new(420, y - 38, 760, 72), new Color(Cyan, 0.13f));
+            DrawPanel(new(430, y - 34, 740, 66));
+            DrawLabel($"{row + 1}", new(455, y + 5), 23,
+                unlocked ? selected ? new Color("ffd065") : Cyan : new Color("566a73"));
+            DrawLabel($"ACT {index / 3 + 1}  •  MISSION {index + 1}", new(505, y - 10), 10,
+                unlocked ? new Color("789fb2") : new Color("566a73"));
+            DrawLabel(mission.Title.ToUpperInvariant(), new(505, y + 12), 16,
                 unlocked ? Colors.White : new Color("687983"));
-            DrawLabel($"COMMAND {mission.Complexity.Rating}/3  •  {mission.Complexity.Tier}",
-                new(875, y - 1), 12, unlocked ? new Color("ffd065") : new Color("66727a"),
-                HorizontalAlignment.Right, 235);
-            DrawLabel(unlocked ? mission.Subtitle : "LOCKED — complete the previous mission",
-                new(545, y + 25), 13, unlocked ? new Color("9bc9dc") : new Color("66727a"));
-            if (completed) DrawLabel("COMPLETE", new(1025, y + 25), 12, new Color("48eba9"));
+            DrawLabel(unlocked ? $"{mission.EstimatedMinutes} MIN  •  {mission.Complexity.Tier}" :
+                    "LOCKED — COMPLETE THE PREVIOUS MISSION",
+                new(825, y + 11), 11, unlocked ? new Color("ffd065") : new Color("66727a"),
+                HorizontalAlignment.Right, 300);
+            if (completed) DrawLabel("COMPLETE", new(1040, y - 10), 10, new Color("48eba9"));
         }
 
-        DrawCenteredLabel($"Press 1–3 to deploy • {BindingLabel(GameActionIds.Missions)} or Esc to close",
-            800, 690, 14, new Color("ffd065"), 700);
+        var navigation = _lastInputWasController
+            ? "D-pad selects • A deploys • B closes"
+            : "↑/↓ select • ←/→ change page • Enter deploys • 1–6 quick deploy";
+        DrawCenteredLabel(navigation, 800, 770, 13, new Color("ffd065"), 780);
+        var selectedMission = MissionCatalog.All[_missionSelectionIndex];
+        DrawCenteredLabel(_progress.IsUnlocked(_missionSelectionIndex)
+                ? selectedMission.Subtitle
+                : "Complete the preceding mission to unlock this operation",
+            800, 800, 12, new Color("87b5ca"), 780);
     }
 
     private void DrawLocalAiSetup()

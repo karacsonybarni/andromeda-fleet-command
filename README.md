@@ -23,12 +23,14 @@ build.
 | Captain's Drill | Campaign progression |
 | --- | --- |
 | ![In-engine Captain's Drill teaching ship switching during live combat](art/screenshots/captains-drill.png) | ![In-engine Black Sun Incident mission selector](art/screenshots/campaign-missions.png) |
-| Learn ship switching, direct control, fleet commands, and abilities while the battle is running. | Three connected missions unlock in order and escalate from orientation to fleet coordination. |
+| Learn ship switching, direct control, fleet commands, and abilities while the battle is running. | The 24-mission story unlocks in order across eight acts, from first patrol to coalition-scale fleet command. |
 
-## Current playable campaign demo
+## Current playable campaign
 
-- A connected three-chapter campaign, **The Black Sun Incident**, with in-engine briefings and debriefs
-- Mission complexity that grows from a two-ship orientation to split defence and full-fleet coordination
+- A connected eight-act, 24-mission campaign, **Crown of Andromeda**, with a 450-minute
+  (7.5-hour) design target, in-engine briefings, and debriefs
+- Mission complexity that grows from a two-ship orientation through split defence, interceptions,
+  coalition battles, fighting withdrawals, and full-fleet assaults
 - Six coherent scalable vector ship classes with faction tinting, shields, and engine trails
 - Readable fleet-combat presentation with animated star depth, tactical radar sweep, target brackets,
   projectile bloom, layered shield/thruster effects, impact sparks, explosions, and restrained camera kick
@@ -45,7 +47,7 @@ build.
 - Gamepad flight, weapons, abilities, ship switching, pause, and menu controls
 - Automatic local crash reports under the Godot user-data directory
 - Deterministic input replays with final-state checksum verification
-- Built-in three-mission simulation benchmark and structured GitHub feedback forms
+- Built-in campaign-wide simulation benchmark and structured GitHub feedback forms
 - Optional GodotSteam achievement adapter and deterministic authoritative-session core
 - Host-on-your-PC multiplayer for up to four captains: cooperative missions against bots or a balanced
   Andromeda-versus-Ketzal Fleet Duel, with bot takeover when a captain disconnects
@@ -142,7 +144,7 @@ Press **F6** from the game, enter a captain name, then:
 - press **V** to host the balanced player-versus-player Fleet Duel; or
 - enter the host's address and press **J** to join.
 
-The host chooses the co-op mission with **1–3**, toggles co-op/PvP with **M**, and starts with
+The host cycles all co-op missions with **Left/Right** (**1–3** remain shortcuts), toggles co-op/PvP with **M**, and starts with
 **Enter**. The host machine runs the authoritative simulation; each captain receives one or more ships,
 can fly them directly, and can issue orders to their assigned command. If a client leaves, deterministic
 pilots immediately resume those ships.
@@ -174,6 +176,9 @@ AFC_WHISPER_MODEL=/path/to/ggml-base.en.bin \
 ~~~
 
 No cloud model is part of the runtime architecture.
+
+See [docs/CAMPAIGN_STORY.md](docs/CAMPAIGN_STORY.md) for the complete campaign
+synopsis, mission-by-mission arc, character development, and pacing targets.
 
 ## Test
 

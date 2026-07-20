@@ -18,8 +18,8 @@ Coverage includes:
 - natural-language attack, intercept, defend, move, and retreat parsing
 - safe rejection of unknown commands
 - deterministic replay-equivalent simulation
-- all three mission definitions and objective outcomes
-- a complete representative three-mission campaign playthrough through normal
+- all 24 mission definitions, eight-act narrative continuity, pacing metadata, and objective outcomes
+- a complete representative 24-mission campaign playthrough through normal
   parsed orders, manual controls, abilities, tutorial steps, and sequential unlocks
 - sequential campaign unlocks and corrupt-save recovery
 - concise four-beat tutorial ordering, progress, purpose text, and dual-input prompts

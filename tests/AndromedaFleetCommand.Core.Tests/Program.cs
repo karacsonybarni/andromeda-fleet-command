@@ -19,7 +19,7 @@ var tests = new (string Name, Action Body)[]
     ("Damage and victory rules work", DamageAndVictoryRules),
     ("Long battle maintains invariants", LongBattleMaintainsInvariants),
     ("Mission catalog is internally valid", MissionCatalogIsValid),
-    ("Campaign narrative forms a connected three-chapter arc", CampaignNarrativeFormsConnectedArc),
+    ("Campaign narrative forms a connected eight-act arc", CampaignNarrativeFormsConnectedArc),
     ("Mission complexity escalates across the campaign", MissionComplexityEscalates),
     ("Mission objectives determine victory and defeat", MissionObjectivesDetermineStatus),
     ("Total fleet loss records defeat without crashing", TotalFleetLossRecordsDefeatSafely),
@@ -194,8 +194,12 @@ static void LongBattleMaintainsInvariants()
 
 static void MissionCatalogIsValid()
 {
-    Equal(3, MissionCatalog.All.Count, "Indiegogo demo mission count");
-    Equal(3, MissionCatalog.All.Select(mission => mission.Id).Distinct().Count(), "Mission IDs are unique");
+    Equal(24, MissionCatalog.All.Count, "Full campaign mission count");
+    Equal(24, MissionCatalog.All.Select(mission => mission.Id).Distinct().Count(), "Mission IDs are unique");
+    Equal(450, MissionCatalog.All.Sum(mission => mission.EstimatedMinutes),
+        "Campaign targets seven and a half hours");
+    True(MissionCatalog.All.All(mission => mission.EstimatedMinutes is >= 12 and <= 25),
+        "Every mission has a credible playtime target");
     foreach (var mission in MissionCatalog.All)
     {
         True(mission.Ships.Any(ship => ship.Team == Team.Player), $"{mission.Title} has a player fleet");
@@ -217,8 +221,10 @@ static void MissionCatalogIsValid()
 static void CampaignNarrativeFormsConnectedArc()
 {
     var missions = MissionCatalog.All;
-    Equal(3, missions.Select(mission => mission.Narrative.Chapter).Distinct().Count(),
-        "Every mission has a distinct chapter");
+    Equal(8, missions.Select(mission => mission.Narrative.Chapter).Distinct().Count(),
+        "Campaign has eight acts");
+    True(missions.GroupBy(mission => mission.Narrative.Chapter).All(act => act.Count() == 3),
+        "Every act contains three missions");
     foreach (var mission in missions)
     {
         True(mission.Narrative.Speaker.Contains("SERA VEY", StringComparison.Ordinal),
@@ -231,40 +237,34 @@ static void CampaignNarrativeFormsConnectedArc()
             $"{mission.Title} narrative lines are populated");
     }
 
-    True(missions[0].Narrative.VictoryLines.Any(line =>
-            line.Contains("Pelagos", StringComparison.OrdinalIgnoreCase)),
-        "Chapter I points directly to Chapter II");
     True(missions[1].Narrative.VictoryLines.Any(line =>
             line.Contains("Black Sun", StringComparison.OrdinalIgnoreCase)),
-        "Chapter II reveals the final operation");
+        "Broken Shield reveals the Black Sun operation");
     True(missions[2].Narrative.VictoryLines.Any(line =>
             line.Contains("Crown Fleet", StringComparison.OrdinalIgnoreCase)),
-        "Chapter III resolves the incident and leaves a restrained sequel hook");
+        "Black Sun opens the Crown Fleet campaign");
+    True(missions[^1].Narrative.VictoryLines.Any(line =>
+            line.Contains("Andromeda Accord", StringComparison.OrdinalIgnoreCase)),
+        "The final mission resolves the campaign with the Andromeda Accord");
 }
 
 static void MissionComplexityEscalates()
 {
     var missions = MissionCatalog.All;
-    True(missions.Select(mission => mission.Complexity.Rating).SequenceEqual([1, 2, 3]),
-        "Command ratings advance one step per chapter");
+    True(missions.Take(3).Select(mission => mission.Complexity.Rating).SequenceEqual([1, 2, 3]),
+        "Opening trilogy teaches command in three steps");
+    True(missions.Skip(3).All(mission => mission.Complexity.Rating == 3),
+        "The full campaign preserves complete fleet command after onboarding");
+    True(missions.All(mission => mission.Complexity.SimultaneousThreatGroups is >= 1 and <= 4),
+        "Threat groups remain readable");
+    True(missions.Skip(3).All(mission => PlayerClassCount(mission) == 4),
+        "Every post-tutorial mission keeps all four player roles");
+    True(EnemyCount(missions[^1]) > EnemyCount(missions[0]),
+        "The final operation fields a larger opposing force than the tutorial");
 
-    for (var index = 1; index < missions.Count; index++)
-    {
-        var previous = missions[index - 1];
-        var current = missions[index];
-        True(current.Complexity.SimultaneousThreatGroups > previous.Complexity.SimultaneousThreatGroups,
-            $"{current.Title} adds another simultaneous threat group");
-        True(EnemyCount(current) > EnemyCount(previous),
-            $"{current.Title} has a larger opposing force");
-        True(current.InitialOrders.Count > previous.InitialOrders.Count,
-            $"{current.Title} begins with more active tactical relationships");
-        True(PlayerClassCount(current) >= PlayerClassCount(previous),
-            $"{current.Title} does not reduce the player's available fleet roles");
-    }
-
-    Equal(2, PlayerCount(missions[0]), "Chapter I starts with a readable two-ship detachment");
-    Equal(4, PlayerCount(missions[1]), "Chapter II introduces the full four-role fleet");
-    Equal(4, PlayerCount(missions[2]), "Chapter III preserves the full fleet for layered command");
+    Equal(2, PlayerCount(missions[0]), "Mission one starts with a readable two-ship detachment");
+    Equal(4, PlayerCount(missions[1]), "Mission two introduces the full four-role fleet");
+    Equal(4, PlayerCount(missions[2]), "Mission three preserves the full fleet for layered command");
 
     static int PlayerCount(MissionDefinition mission) =>
         mission.Ships.Count(ship => ship.Team == Team.Player);
@@ -339,17 +339,24 @@ static void EveryCampaignMissionIsWinnable()
             True(tutorial.IsComplete, "Captain's Drill completes before the first battle ends");
         }
 
-        var combatOrders = mission.Id switch
+        var combatOrders = new[]
         {
-            MissionId.FirstCommand => new[] { "All ships, attack the raider leader" },
-            MissionId.BrokenShield => new[] { "All ships, attack the nearest bomber" },
-            _ => new[] { "All ships, attack the enemy flagship" }
+            mission.Id == MissionId.FirstCommand
+                ? "All ships, attack the raider leader"
+                : mission.Objective.Kind == MissionObjectiveKind.DestroyTarget
+                    ? "All ships, attack the enemy flagship"
+                    : $"All ships, attack the nearest {mission.Objective.TargetClass!.Value.ToString().ToLowerInvariant()}"
         };
         foreach (var order in combatOrders) DispatchOrder(order);
-        if (mission.Id == MissionId.BrokenShield)
+        if (mission.Objective.ProtectedShipId is not null)
         {
-            simulation.SelectPlayerShip(1);
-            shipSwitches++;
+            var protectedIndex = simulation.PlayerFleet.ToList()
+                .FindIndex(ship => ship.Id == mission.Objective.ProtectedShipId);
+            if (protectedIndex >= 0)
+            {
+                simulation.SelectPlayerShip(protectedIndex);
+                shipSwitches++;
+            }
         }
 
         const int maximumTicks = 60 * 240;
@@ -370,15 +377,14 @@ static void EveryCampaignMissionIsWinnable()
                 shipSwitches++;
             }
             if (tick > 0 && tick % (60 * 12) == 0)
-                foreach (var order in combatOrders.Skip(mission.Id == MissionId.FirstCommand ? 0 : 1))
-                    DispatchOrder(order);
+                foreach (var order in combatOrders) DispatchOrder(order);
             if (simulation.SelectedShip.AbilityCooldown <= 0)
             {
                 simulation.TryActivateSelectedAbility();
                 if (simulation.SelectedShip.AbilityCooldown > 0) abilities++;
             }
 
-            simulation.SetManualInput(mission.Id is MissionId.BrokenShield or MissionId.BlackSun
+            simulation.SetManualInput(mission.Objective.ProtectedShipId is not null
                 ? PlayerInputForProtectedShipEvasion(simulation)
                 : PlayerInputForObjective(simulation));
             simulation.Update(BattleSimulation.FixedStep);
@@ -419,7 +425,8 @@ static void EveryCampaignMissionIsWinnable()
         }
     }
 
-    Equal(3, progress.CompletedMissions.Count, "Representative play completes the campaign");
+    Equal(MissionCatalog.All.Count, progress.CompletedMissions.Count,
+        "Representative play completes the campaign");
 }
 
 static ManualInput PlayerInputForObjective(BattleSimulation simulation)
@@ -469,15 +476,17 @@ static ManualInput PlayerInputForProtectedShipEvasion(BattleSimulation simulatio
 static void CampaignProgressionUnlocksMissions()
 {
     var progress = CampaignProgress.New;
-    True(progress.IsUnlocked(0), "First mission starts unlocked");
-    True(!progress.IsUnlocked(1), "Second mission starts locked");
-    progress = progress.Complete(MissionId.FirstCommand);
-    True(progress.IsUnlocked(1), "Completing first unlocks second");
-    progress = progress.Complete(MissionId.BrokenShield);
-    True(progress.IsUnlocked(2), "Completing second unlocks third");
-    progress = progress.Complete(MissionId.BlackSun);
-    Equal(2, progress.HighestUnlockedMission, "Progress clamps at final mission");
-    Equal(3, progress.CompletedMissions.Count, "Every mission can be completed");
+    for (var index = 0; index < MissionCatalog.All.Count; index++)
+    {
+        True(progress.IsUnlocked(index), $"Mission {index + 1} is unlocked in sequence");
+        if (index + 1 < MissionCatalog.All.Count)
+            True(!progress.IsUnlocked(index + 1), $"Mission {index + 2} remains locked");
+        progress = progress.Complete(MissionCatalog.All[index].Id);
+    }
+    Equal(MissionCatalog.All.Count - 1, progress.HighestUnlockedMission,
+        "Progress clamps at final mission");
+    Equal(MissionCatalog.All.Count, progress.CompletedMissions.Count,
+        "Every mission can be completed");
 }
 
 static void CampaignProgressPersistsSafely()
@@ -763,6 +772,8 @@ static void SimulationChecksumDetectsChanges()
 static void FleetDuelIsBalanced()
 {
     var mission = MissionCatalog.FleetDuel;
+    Equal(3, (int)MissionId.FleetDuel,
+        "Fleet Duel preserves its original replay and multiplayer wire value");
     var player = mission.Ships.Where(ship => ship.Team == Team.Player).ToArray();
     var enemy = mission.Ships.Where(ship => ship.Team == Team.Enemy).ToArray();
     Equal(4, player.Length, "Fleet Duel has four Andromeda ships");
