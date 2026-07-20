@@ -2,6 +2,16 @@ name: Build desktop demo
 
 on:
   workflow_dispatch:
+  pull_request:
+    paths:
+      - ".github/workflows/release.yml"
+      - "src/**"
+      - "art/**"
+      - "scripts/**"
+      - "Main.tscn"
+      - "project.godot"
+      - "export_presets.cfg"
+      - "AndromedaFleetCommand.Game.csproj"
   push:
     branches: ["main"]
     tags: ["v*"]
@@ -102,6 +112,64 @@ jobs:
           ! grep -q "invalid UID" "$packaged_smoke_log"
       - uses: actions/upload-artifact@v4
         with:
-          name: AndromedaFleetCommand-${{ github.ref_name }}
+          name: AndromedaFleetCommand-${{ github.run_id }}
           path: dist/packages/*
           if-no-files-found: error
+
+  windows-smoke:
+    needs: package
+    runs-on: windows-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: AndromedaFleetCommand-${{ github.run_id }}
+          path: dist/packages
+      - name: Launch packaged Windows demo
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $archive = Get-ChildItem dist/packages -Filter "*Windows-x64.zip" | Select-Object -First 1
+          if (-not $archive) { throw "Windows package was not downloaded" }
+
+          $packageDirectory = Join-Path $env:RUNNER_TEMP "afc-windows-package"
+          Expand-Archive -LiteralPath $archive.FullName -DestinationPath $packageDirectory
+          $game = Get-ChildItem $packageDirectory -Recurse -Filter "AndromedaFleetCommand.exe" |
+            Select-Object -First 1
+          $whisper = Get-ChildItem $packageDirectory -Recurse -Filter "whisper-cli.exe" |
+            Select-Object -First 1
+          if (-not $game) { throw "Packaged game executable is missing" }
+          if (-not $whisper) { throw "Packaged whisper.cpp executable is missing" }
+          if (Get-ChildItem $packageDirectory -Recurse -Filter "*.pdb") {
+            throw "Debug symbols must not be present in the player package"
+          }
+
+          & $whisper.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw "Packaged whisper.cpp failed with exit code $LASTEXITCODE" }
+
+          $startInfo = [System.Diagnostics.ProcessStartInfo]::new()
+          $startInfo.FileName = $game.FullName
+          $startInfo.WorkingDirectory = $game.DirectoryName
+          $startInfo.UseShellExecute = $false
+          $startInfo.RedirectStandardOutput = $true
+          $startInfo.RedirectStandardError = $true
+          $startInfo.ArgumentList.Add("--headless")
+          $startInfo.ArgumentList.Add("--")
+          $startInfo.ArgumentList.Add("--smoke-test")
+
+          $process = [System.Diagnostics.Process]::new()
+          $process.StartInfo = $startInfo
+          if (-not $process.Start()) { throw "Packaged game process did not start" }
+          $standardOutput = $process.StandardOutput.ReadToEndAsync()
+          $standardError = $process.StandardError.ReadToEndAsync()
+          if (-not $process.WaitForExit(45000)) {
+            $process.Kill($true)
+            throw "Packaged game did not finish its smoke test within 45 seconds"
+          }
+          $log = $standardOutput.GetAwaiter().GetResult() + $standardError.GetAwaiter().GetResult()
+          Write-Host $log
+          if ($process.ExitCode -ne 0) { throw "Packaged game failed with exit code $($process.ExitCode)" }
+          if ($log -notmatch "AFC_SMOKE_PASS") { throw "Packaged game did not emit AFC_SMOKE_PASS" }
+          if ($log -match "invalid UID|Unhandled exception|InvalidOperationException") {
+            throw "Packaged game emitted an initialization error"
+          }

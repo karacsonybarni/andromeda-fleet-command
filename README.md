@@ -75,8 +75,9 @@ comparison with Unity and Unreal.
 The latest clean `main` package is available from the
 [successful desktop-demo workflow](https://github.com/karacsonybarni/andromeda-fleet-command/actions/workflows/release.yml).
 Its artifact contains separate Windows and Linux archives plus portable SHA-256
-checksums. The Linux archive is launch-tested headlessly before upload; the
-Windows archive is cross-exported and still needs a clean Windows playtest.
+checksums. Both packaged games are launch-tested headlessly on their native
+GitHub-hosted operating systems before the workflow can pass. A graphical
+Windows playtest is still required before public release.
 
 ### Run from source
 

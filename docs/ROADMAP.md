@@ -33,7 +33,7 @@
 - [x] Automatic local crash reports
 - [x] Structured in-game GitHub feedback and bug-report forms
 - [ ] Trailer capture
-- [x] Downloadable unsigned Windows/Linux demo artifacts with Linux launch validation
+- [x] Downloadable unsigned Windows/Linux demo artifacts with native launch validation
 
 ## Steam alpha
 
