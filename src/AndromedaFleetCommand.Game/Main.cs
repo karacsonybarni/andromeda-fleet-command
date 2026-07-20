@@ -39,6 +39,7 @@ public sealed partial class Main : Node2D
     private readonly CommandDispatcher _dispatcher = new();
     private readonly Queue<string> _log = new();
     private readonly List<Star> _stars = [];
+    private readonly Vector2[][] _dustLanes = [new Vector2[38], new Vector2[38], new Vector2[38]];
     private readonly Dictionary<ShipClass, Texture2D> _shipTextures = [];
     private LocalCommandInterpreter? _interpreter;
     private WhisperVoiceInput? _voiceInput;
@@ -1905,22 +1906,17 @@ public sealed partial class Main : Node2D
         for (var lane = 0; lane < 3; lane++)
         {
             var phase = (float)_visualTime * (0.018f + lane * 0.004f) + lane * 1.7f;
-            Vector2 PointAt(int point)
+            var points = _dustLanes[lane];
+            for (var point = 0; point < points.Length; point++)
             {
-                var progress = point / 37f;
-                return new(
+                var progress = point / (float)(points.Length - 1);
+                points[point] = new(
                     -90 + progress * 1780,
                     150 + lane * 205 + Mathf.Sin(progress * Mathf.Tau * 0.72f + phase) * (36 + lane * 13));
             }
-            var previous = PointAt(0);
-            for (var point = 1; point < 38; point++)
-            {
-                var current = PointAt(point);
-                DrawLine(previous, current, new Color(lane == 1 ? Cyan : new Color("8f75ff"),
-                    0.026f + lane * 0.008f), 10 - lane * 2.4f, true);
-                DrawLine(previous, current, new Color(Cyan, 0.035f + lane * 0.009f), 1.1f, true);
-                previous = current;
-            }
+            DrawPolyline(points, new Color(lane == 1 ? Cyan : new Color("8f75ff"),
+                0.026f + lane * 0.008f), 10 - lane * 2.4f, true);
+            DrawPolyline(points, new Color(Cyan, 0.035f + lane * 0.009f), 1.1f, true);
         }
     }
 
