@@ -60,6 +60,7 @@ in a normal Godot .NET installation.
 - Headless resource leak check after presentation load: passed
 - Live two-process ENet cooperative match: passed
 - Live two-process ENet PvP match: passed
+- Packaged native Windows headless launch and bundled whisper.cpp startup: passed
 
 Both multiplayer modes are exercised with separate host and client Godot
 processes. The check requires matching modes, advancing authoritative snapshots,
@@ -86,9 +87,9 @@ AFC_BENCHMARK_PASS ticks=32400 ticks_per_second=37360
 The `Build desktop demo` workflow runs on every `main` update that changes
 release inputs, and on every version tag.
 It uses the official Godot 4.7 .NET editor and export templates, exports both
-desktop targets, launch-tests Linux, packages both platforms, and uploads
-checksummed artifacts. Windows remains cross-exported and therefore requires a
-clean Windows launch check before public distribution.
+desktop targets, packages both platforms, and launch-tests each packaged game
+on a native GitHub-hosted operating system before the workflow can pass. The
+Windows launch also verifies the bundled whisper.cpp executable.
 
 Release workflow run
 [29506843313](https://github.com/karacsonybarni/andromeda-fleet-command/actions/runs/29506843313)
@@ -113,4 +114,4 @@ publishing a public demo:
 - keyboard focus while opening and cancelling the command line
 - microphone permissions and whisper.cpp setup on Windows
 - controller rebinding and accessibility review
-- Windows export-template build and launch outside the Godot editor
+- native graphical Windows play with keyboard and controller
