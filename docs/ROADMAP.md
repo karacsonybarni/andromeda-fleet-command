@@ -17,6 +17,7 @@
 - [x] Replace procedural silhouettes with a coherent six-class scalable vector fleet set
 - [x] Combat-readability pass with targeting, projectile, shield, thruster, impact, and destruction VFX
 - [ ] Final art-direction, animation, VFX, and store-quality capture pass
+- [x] Automated 1920×1080 real-gameplay capture validation for Steam store screenshots
 - [x] 24 playable missions with escalating objectives and command complexity
 - [x] Connected eight-act storyline with mission briefings, victory debriefs, and failure beats
 - [x] Encode a 450-minute campaign pacing target across 15–23-minute missions

@@ -1872,6 +1872,7 @@ public sealed partial class Main : Node2D
         DrawNebulaCloud(new(1220, 175), 540, new Color(0.06f, 0.3f, 0.52f, 0.065f + breath * 0.018f));
         DrawNebulaCloud(new(1390, 390), 380, new Color(0.38f, 0.08f, 0.36f, 0.045f));
         DrawNebulaCloud(new(790, 285), 260, new Color(0.06f, 0.35f, 0.4f, 0.032f));
+        DrawStellarDustLanes();
         foreach (var star in _stars)
         {
             var x = (star.Position.X - (float)_visualTime * star.Depth * 2.4f) % 1600f;
@@ -1882,6 +1883,12 @@ public sealed partial class Main : Node2D
                 star.Phase);
             var color = new Color(star.Blue ? 0.58f : 1f, star.Blue ? 0.82f : 0.9f, 1f,
                 star.Alpha * twinkle);
+            if (star.Depth > 1.75f)
+            {
+                var trailLength = star.Depth * (2.2f + breath * 1.3f);
+                DrawLine(new(x - trailLength, y), new(x, y),
+                    new Color(color, color.A * 0.18f), Math.Max(1, star.Size * 0.42f), true);
+            }
             DrawCircle(new(x, y), star.Size, color);
             if (star.Size > 2.35f)
                 DrawLine(new(x - star.Size * 2.2f, y), new(x + star.Size * 2.2f, y),
@@ -1891,6 +1898,30 @@ public sealed partial class Main : Node2D
         DrawPlanet();
         DrawRect(new(0, 74, 1600, 28), new Color(0, 0, 0, 0.18f));
         DrawRect(new(0, 850, 1600, 50), new Color(0, 0, 0, 0.32f));
+    }
+
+    private void DrawStellarDustLanes()
+    {
+        for (var lane = 0; lane < 3; lane++)
+        {
+            var phase = (float)_visualTime * (0.018f + lane * 0.004f) + lane * 1.7f;
+            Vector2 PointAt(int point)
+            {
+                var progress = point / 37f;
+                return new(
+                    -90 + progress * 1780,
+                    150 + lane * 205 + Mathf.Sin(progress * Mathf.Tau * 0.72f + phase) * (36 + lane * 13));
+            }
+            var previous = PointAt(0);
+            for (var point = 1; point < 38; point++)
+            {
+                var current = PointAt(point);
+                DrawLine(previous, current, new Color(lane == 1 ? Cyan : new Color("8f75ff"),
+                    0.026f + lane * 0.008f), 10 - lane * 2.4f, true);
+                DrawLine(previous, current, new Color(Cyan, 0.035f + lane * 0.009f), 1.1f, true);
+                previous = current;
+            }
+        }
     }
 
     private void DrawNebulaCloud(Vector2 center, float radius, Color color)
@@ -2043,6 +2074,7 @@ public sealed partial class Main : Node2D
             _ => 1f
         };
         var visualRadius = (float)ship.Stats.Radius * visualScale;
+        DrawShipMotionWake(ship, position, teamColor, visualRadius);
         DrawCircle(position, visualRadius * 2.15f, new Color(teamColor, selected ? 0.075f : 0.035f));
         DrawCircle(position + new Vector2(7, 10), visualRadius * 1.24f,
             new Color(0, 0, 0, 0.32f));
@@ -2121,6 +2153,26 @@ public sealed partial class Main : Node2D
                 position.Y - visualRadius - 20, 12, teamColor, 150);
             DrawBar(new(position.X - 55, position.Y - visualRadius - 9), 110, 4,
                 (float)ship.HullRatio, teamColor);
+        }
+    }
+
+    private void DrawShipMotionWake(Ship ship, Vector2 position, Color teamColor, float visualRadius)
+    {
+        var velocity = ToVector(ship.Velocity);
+        var speed = velocity.Length();
+        if (speed < 10) return;
+
+        var direction = velocity.Normalized();
+        var tangent = new Vector2(-direction.Y, direction.X);
+        var intensity = Mathf.Clamp((float)(speed / Math.Max(1, ship.EffectiveMaxSpeed)), 0.15f, 1);
+        var wakeLength = visualRadius * 0.7f + 42 * intensity;
+        for (var streak = -1; streak <= 1; streak++)
+        {
+            var offset = tangent * streak * visualRadius * 0.24f;
+            var head = position - direction * visualRadius * 0.72f + offset;
+            var tail = head - direction * wakeLength * (streak == 0 ? 1 : 0.72f);
+            DrawLine(tail, head, new Color(teamColor, streak == 0 ? 0.12f : 0.065f),
+                streak == 0 ? 2.2f : 1.2f, true);
         }
     }
 
@@ -2974,6 +3026,9 @@ public sealed partial class Main : Node2D
 
     private void DrawPanel(Rect2 rect)
     {
+        DrawRect(new(rect.Position + new Vector2(7, 9), rect.Size), new Color(0, 0, 0, 0.34f));
+        DrawRect(new(rect.Position - new Vector2(2, 2), rect.Size + new Vector2(4, 4)),
+            new Color(Cyan, 0.025f));
         DrawStyleBox(new StyleBoxFlat
         {
             BgColor = Panel,

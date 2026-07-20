@@ -117,3 +117,11 @@ publishing a public demo:
 - microphone permissions and whisper.cpp setup on Windows
 - controller rebinding and accessibility review
 - native graphical Windows play with keyboard and controller
+
+## Store capture validation
+
+The pull-request visual workflow renders ten unedited gameplay and interface
+screens at 1920×1080. `scripts/verify-visual-captures.py` rejects missing,
+unexpected, duplicate, undersized, non-PNG, or non-16:9 captures before the
+artifact can pass. The three curated README images are selected from that same
+automated in-engine capture set.
