@@ -509,9 +509,7 @@ public static class MissionCatalog
         var bombers = encounter == Encounter.BomberDefence
             ? 4
             : encounter == Encounter.DestroyerBreak ? 0 : level >= 5 ? 3 : 2;
-        var escorts = encounter == Encounter.DestroyerBreak
-            ? level >= 6 ? 1 : 0
-            : level >= 3 ? 2 : 1;
+        var escorts = encounter == Encounter.DestroyerBreak ? 0 : level >= 3 ? 2 : 1;
         if (encounter == Encounter.DestroyerBreak && level >= 6) destroyers++;
 
         var destroyerPositions = new[] { new Vector2D(1240, 305), new Vector2D(1260, 620),
