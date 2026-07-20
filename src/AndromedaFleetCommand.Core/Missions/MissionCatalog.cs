@@ -498,10 +498,14 @@ public static class MissionCatalog
             Enemy("enemy-carrier-1", "Enemy Carrier One", ShipClass.Carrier, 1380, 235)
         };
 
-        var destroyers = encounter == Encounter.DestroyerBreak ? 3 : level >= 4 ? 2 : 1;
+        var destroyers = encounter == Encounter.DestroyerBreak
+            ? level >= 6 ? 3 : 2
+            : level >= 4 ? 2 : 1;
         if (encounter == Encounter.CarrierHunt) ships.Add(Enemy("enemy-carrier-2", "Enemy Carrier Two",
             ShipClass.Carrier, 1380, 675));
-        var bombers = encounter == Encounter.BomberDefence ? 4 + (level >= 5 ? 1 : 0) : level >= 5 ? 3 : 2;
+        var bombers = encounter == Encounter.BomberDefence
+            ? 4 + (level >= 5 ? 1 : 0)
+            : encounter == Encounter.DestroyerBreak ? 1 : level >= 5 ? 3 : 2;
         var escorts = level >= 3 ? 2 : 1;
         if (encounter == Encounter.DestroyerBreak && level >= 6) destroyers++;
 
