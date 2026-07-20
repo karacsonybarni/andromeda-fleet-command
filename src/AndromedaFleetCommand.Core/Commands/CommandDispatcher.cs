@@ -82,6 +82,13 @@ public sealed class CommandDispatcher
                 .MinBy(ship => ship.Position.DistanceTo(subject.Position));
             if (bomber is not null) return bomber;
         }
+        foreach (var shipClass in Enum.GetValues<ShipClass>())
+        {
+            if (!selector.Contains(shipClass.ToString(), StringComparison.OrdinalIgnoreCase)) continue;
+            var classTarget = candidates.Where(ship => ship.Class == shipClass)
+                .MinBy(ship => ship.Position.DistanceTo(subject.Position));
+            if (classTarget is not null) return classTarget;
+        }
         var named = candidates.FirstOrDefault(ship =>
             ship.Name.Contains(selector, StringComparison.OrdinalIgnoreCase) ||
             selector.Contains(ship.Name, StringComparison.OrdinalIgnoreCase));

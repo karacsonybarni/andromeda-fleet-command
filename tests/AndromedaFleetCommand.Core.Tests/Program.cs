@@ -143,13 +143,22 @@ static void ManualControlMovesShip()
 static void DispatcherAssignsOrders()
 {
     var simulation = new BattleSimulation(2);
+    var dispatcher = new CommandDispatcher();
     var command = new RuleBasedCommandInterpreter().Parse("All ships, attack the enemy flagship").Command!;
-    new CommandDispatcher().Dispatch(command, simulation);
+    dispatcher.Dispatch(command, simulation);
     foreach (var ship in simulation.Ships.Where(ship => ship.Team == Team.Player))
     {
         Equal(OrderType.Attack, ship.Order.Type, "Every player ship attacks");
         Equal("enemy-flagship", ship.Order.TargetId, "Target id is validated");
     }
+
+    var classSimulation = new BattleSimulation(MissionId.MutinyAtLyra);
+    var classCommand = new RuleBasedCommandInterpreter()
+        .Parse("All ships, attack the nearest destroyer").Command!;
+    dispatcher.Dispatch(classCommand, classSimulation);
+    foreach (var ship in classSimulation.Ships.Where(ship => ship.Team == Team.Player))
+        Equal(ShipClass.Destroyer, classSimulation.FindShip(ship.Order.TargetId!)!.Class,
+            "Ship-class target selectors resolve to the requested class");
 }
 
 static void ShipAbilitiesUseCooldowns()
