@@ -17,8 +17,9 @@ Ollama model and whisper.cpp.
 
 ## Gameplay screenshots
 
-Every image below is an unedited in-engine capture from the current playable
-build.
+Every image below is an unedited 1920×1080 in-engine capture from the current
+playable build. The pull-request renderer reproduces and validates the same
+ten-screen capture set automatically.
 
 | Captain's Drill | Campaign progression |
 | --- | --- |
