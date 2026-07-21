@@ -63,12 +63,12 @@ jobs:
           set -euo pipefail
           ffmpeg -y -i trailer/andromeda-fleet-command.avi \
             -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p \
-            -c:a aac -b:a 192k -movflags +faststart \
+            -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k -movflags +faststart \
             trailer/andromeda-fleet-command-trailer.mp4
           python3 scripts/verify-trailer.py trailer/andromeda-fleet-command-trailer.mp4
           ffmpeg -i trailer/andromeda-fleet-command-trailer.mp4 \
-            -af volumedetect -f null - 2> trailer/audio-analysis.txt
-          grep -q "mean_volume:" trailer/audio-analysis.txt
+            -filter_complex ebur128=peak=true -f null - 2> trailer/audio-analysis.txt
+          grep -q "Integrated loudness:" trailer/audio-analysis.txt
       - uses: actions/upload-artifact@v4
         with:
           name: gameplay-trailer-${{ github.event.pull_request.head.sha || github.sha }}

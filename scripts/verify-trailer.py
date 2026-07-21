@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -12,6 +13,8 @@ from pathlib import Path
 MINIMUM_BYTES = 1_000_000
 MINIMUM_DURATION = 29.0
 MAXIMUM_DURATION = 32.0
+MINIMUM_LOUDNESS = -19.0
+MAXIMUM_LOUDNESS = -13.0
 
 
 def probe(path: Path) -> dict:
@@ -36,6 +39,20 @@ def probe(path: Path) -> dict:
 def frame_rate(value: str) -> float:
     numerator, separator, denominator = value.partition("/")
     return float(numerator) / float(denominator) if separator and float(denominator) else float(numerator)
+
+
+def integrated_loudness(path: Path) -> float:
+    result = subprocess.run(
+        ["ffmpeg", "-i", str(path), "-filter_complex", "ebur128=peak=true", "-f", "null", "-"],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    summary = result.stderr.rsplit("Summary:", 1)[-1]
+    match = re.search(r"\bI:\s*(-?\d+(?:\.\d+)?) LUFS", summary)
+    if match is None:
+        raise ValueError("FFmpeg did not report integrated loudness")
+    return float(match.group(1))
 
 
 def validate(path: Path) -> list[str]:
@@ -87,6 +104,16 @@ def validate(path: Path) -> list[str]:
             errors.append(f"audio sample rate is {audio.get('sample_rate')}; expected at least 44100 Hz")
         if int(audio.get("channels", 0)) < 2:
             errors.append(f"audio has {audio.get('channels')} channel(s); expected stereo")
+        try:
+            loudness = integrated_loudness(path)
+        except (subprocess.CalledProcessError, FileNotFoundError, ValueError) as error:
+            errors.append(f"audio loudness could not be measured: {error}")
+        else:
+            if not MINIMUM_LOUDNESS <= loudness <= MAXIMUM_LOUDNESS:
+                errors.append(
+                    f"integrated loudness is {loudness:.1f} LUFS; expected "
+                    f"{MINIMUM_LOUDNESS:.0f} to {MAXIMUM_LOUDNESS:.0f} LUFS"
+                )
     return errors
 
 
@@ -98,9 +125,11 @@ def main() -> int:
             print(f"ERROR: {error}", file=sys.stderr)
         return 1
     metadata = probe(path)
+    loudness = integrated_loudness(path)
     print(
         "AFC_TRAILER_VALIDATION_PASS "
-        f"file={path} duration={float(metadata['format']['duration']):.2f}s resolution=1920x1080 audio=stereo"
+        f"file={path} duration={float(metadata['format']['duration']):.2f}s "
+        f"resolution=1920x1080 audio=stereo loudness={loudness:.1f}LUFS"
     )
     return 0
 

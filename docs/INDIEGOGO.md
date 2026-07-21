@@ -33,7 +33,7 @@ abilities, full-fleet combat, the 24-mission campaign, and hosted co-op/PvP.
 
 Run the **Gameplay trailer capture** workflow and download its MP4 artifact.
 The workflow rejects the export unless it has 1080p H.264 video, a 29+ fps
-frame rate, stereo AAC audio, and the expected duration. The trailer is
+frame rate, stereo AAC audio in a campaign-ready loudness range, and the expected duration. The trailer is
 deterministic promotional capture; do not describe its scripted command entry
 as measured microphone latency. Record and publish a separate hardware demo
 before making a voice-latency claim.
