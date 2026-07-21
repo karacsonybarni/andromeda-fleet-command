@@ -15,6 +15,14 @@ The runtime is local-first. The trusted offline command parser, simulation, and
 ship pilots need no hosted service. Optional integrations can use a local
 Ollama model and whisper.cpp.
 
+## Gameplay trailer
+
+The [gameplay trailer workflow](https://github.com/karacsonybarni/andromeda-fleet-command/actions/workflows/trailer.yml)
+renders a deterministic 30-second, 1920×1080 trailer directly from the playable
+Godot build, including the original in-engine soundtrack and combat cues. Its
+downloadable MP4 is automatically checked for duration, frame rate, resolution,
+video codec, and stereo audio; it contains no generated or substitute footage.
+
 ## Gameplay screenshots
 
 Every image below is an unedited 1920×1080 in-engine capture from the current

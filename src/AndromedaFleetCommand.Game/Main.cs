@@ -104,6 +104,9 @@ public sealed partial class Main : Node2D
     private int _visualQaFrames;
     private string _visualQaDirectory = string.Empty;
     private readonly List<string> _visualQaCaptures = [];
+    private bool _trailerCapture;
+    private double _trailerTime;
+    private int _trailerStage;
     private MultiplayerManager? _multiplayer;
     private bool _showMultiplayer;
     private bool _wasMultiplayerMatch;
@@ -130,6 +133,7 @@ public sealed partial class Main : Node2D
             _multiplayerSmokeMode = MultiplayerMode.Versus;
         ReportMultiplayerSmokeBoot("arguments");
         _visualQa = commandArguments.Contains("--visual-qa", StringComparer.Ordinal);
+        _trailerCapture = commandArguments.Contains("--trailer", StringComparer.Ordinal);
         var benchmarkMode = commandArguments.Contains("--benchmark", StringComparer.Ordinal);
         _settingsStore = new(ProjectSettings.GlobalizePath("user://settings.json"));
         _settings = _settingsStore.Load();
@@ -207,6 +211,15 @@ public sealed partial class Main : Node2D
             _showHelp = true;
             _status = string.Empty;
             _statusTime = 0;
+        }
+        if (_trailerCapture)
+        {
+            _showHelp = false;
+            _status = string.Empty;
+            _statusTime = 0;
+            _simulation.LoadMission(MissionId.BlackSun);
+            StartReplayRecording();
+            GD.Print("AFC_TRAILER_START resolution=1920x1080 duration=30");
         }
         GetViewport().SizeChanged += QueueRedraw;
         QueueRedraw();
@@ -305,6 +318,7 @@ public sealed partial class Main : Node2D
         }
         QueueRedraw();
         if (_visualQa) AdvanceVisualQa();
+        if (_trailerCapture) AdvanceTrailer(delta);
         if (_smokeTest && _simulation.ElapsedSeconds >= 2)
         {
             var finite = _simulation.Ships.All(ship => ship.Position.IsFinite && ship.Velocity.IsFinite);
@@ -313,6 +327,69 @@ public sealed partial class Main : Node2D
             _smokeTest = false;
             GetTree().Quit();
         }
+    }
+
+    private void AdvanceTrailer(double delta)
+    {
+        _trailerTime += delta;
+
+        if (_simulation.Status != BattleStatus.Active && _trailerTime < 25)
+        {
+            _simulation.LoadMission(MissionId.BlackSun);
+            StartReplayRecording();
+            IssueTrailerCommand("All ships, attack the enemy flagship");
+        }
+
+        if (_trailerStage == 0 && _trailerTime >= 2.6)
+        {
+            IssueTrailerCommand("All ships, attack the enemy flagship");
+            _trailerStage++;
+        }
+        else if (_trailerStage == 1 && _trailerTime >= 8)
+        {
+            SelectPlayerShip(2);
+            ActivateSelectedAbility();
+            _trailerStage++;
+        }
+        else if (_trailerStage == 2 && _trailerTime >= 13)
+        {
+            SelectPlayerShip(1);
+            ActivateSelectedAbility();
+            IssueTrailerCommand("All ships, attack the nearest enemy");
+            _trailerStage++;
+        }
+        else if (_trailerStage == 3 && _trailerTime >= 18)
+        {
+            _simulation.LoadMission(MissionId.BlackSun);
+            StartReplayRecording();
+            IssueTrailerCommand("All ships, attack the enemy flagship");
+            SelectPlayerShip(3);
+            _trailerStage++;
+        }
+        else if (_trailerStage == 4 && _trailerTime >= 25)
+        {
+            PlayCue(TacticalCue.Victory, "Fleet command link secured");
+            _trailerStage++;
+        }
+        else if (_trailerTime >= 30)
+        {
+            GD.Print($"AFC_TRAILER_PASS duration={_trailerTime:F2} mission={_simulation.Mission.Id}");
+            _trailerCapture = false;
+            GetTree().Quit();
+        }
+    }
+
+    private void IssueTrailerCommand(string text)
+    {
+        var parsed = _rules.Parse(text);
+        if (!parsed.Success || parsed.Command is null)
+            throw new InvalidOperationException($"Trailer command could not be parsed: {text}");
+        _lastIssuedCommand = text;
+        _lastAcknowledgement = _dispatcher.Dispatch(parsed.Command, _simulation);
+        _commandPulseTime = 4.5;
+        PlayCue(TacticalCue.Acknowledgement, "Fleet acknowledges order");
+        AddLog($"YOU  {text}");
+        AddLog($"FLEET  {_lastAcknowledgement}");
     }
 
     private ManualInput ReadManualInput()
@@ -651,6 +728,54 @@ public sealed partial class Main : Node2D
         DrawSetTransform(Vector2.Zero, 0);
         DrawHud();
         DrawOverlay();
+        if (_trailerCapture) DrawTrailerOverlay();
+    }
+
+    private void DrawTrailerOverlay()
+    {
+        if (_trailerTime < 2.6)
+        {
+            var fade = _trailerTime < 1.9 ? 0.9f : (float)Math.Clamp((2.6 - _trailerTime) / 0.7, 0, 0.9);
+            DrawRect(new(0, 0, 1600, 900), new Color(0, 0.012f, 0.035f, fade));
+            DrawCenteredLabel("ANDROMEDA", 800, 382, 58, Colors.White, 1100);
+            DrawCenteredLabel("FLEET COMMAND", 800, 448, 43, Cyan, 1100);
+            DrawCenteredLabel("COMMAND EVERY SHIP", 800, 505, 16, new Color("ffd065"), 900);
+            return;
+        }
+
+        if (_trailerTime >= 25)
+        {
+            var fade = (float)Math.Clamp((_trailerTime - 25) / 0.7, 0, 0.92);
+            DrawRect(new(0, 0, 1600, 900), new Color(0, 0.012f, 0.035f, fade));
+            DrawCenteredLabel("ANDROMEDA FLEET COMMAND", 800, 342, 45, Colors.White, 1200);
+            DrawCenteredLabel("24-MISSION STORY CAMPAIGN", 800, 414, 18, Cyan, 1000);
+            DrawCenteredLabel("HOST CO-OP VS BOTS  •  CAPTAIN-VS-CAPTAIN PVP", 800, 454, 16,
+                new Color("48eba9"), 1100);
+            DrawCenteredLabel("LOCAL-FIRST  •  OPEN SOURCE  •  BUILT FOR STEAM", 800, 500, 15,
+                new Color("ffd065"), 1000);
+            DrawCenteredLabel("TAKE COMMAND", 800, 590, 22, Colors.White, 900);
+            return;
+        }
+
+        var (eyebrow, title) = _trailerTime switch
+        {
+            < 8 => ("NATURAL-LANGUAGE ORDER", "ALL SHIPS, ATTACK THE ENEMY FLAGSHIP"),
+            < 13 => ("INSTANT SHIP SWITCH", "FLY ANY VESSEL IN YOUR FLEET"),
+            < 18 => ("TACTICAL ABILITIES", "TURN ONE ORDER INTO A BATTLEFIELD CONSEQUENCE"),
+            _ => ("FULL-FLEET WARFARE", "SOLO CAMPAIGN  •  HOSTED CO-OP  •  PVP")
+        };
+        DrawStyleBox(new StyleBoxFlat
+        {
+            BgColor = new Color(0.005f, 0.025f, 0.05f, 0.88f),
+            BorderColor = new Color(Cyan, 0.72f),
+            BorderWidthLeft = 3,
+            CornerRadiusTopRight = 12,
+            CornerRadiusBottomRight = 12
+        }, new Rect2(0, 736, 1120, 116));
+        DrawLabel(eyebrow, new(52, 778), 13, new Color("ffd065"));
+        DrawLabel(title, new(52, 816), 22, Colors.White);
+        DrawLabel("REAL GAMEPLAY  •  IN-ENGINE AUDIO", new(1222, 824), 11,
+            new Color("87b5ca"), HorizontalAlignment.Right, 320);
     }
 
     private void CreateCommandLine()

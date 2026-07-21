@@ -36,7 +36,7 @@
 - [x] Reproducible campaign-wide simulation benchmark harness
 - [x] Automatic local crash reports
 - [x] Structured in-game GitHub feedback and bug-report forms
-- [ ] Trailer capture
+- [x] Reproducible 1080p gameplay trailer capture with original game audio and automated media validation
 - [x] Downloadable unsigned Windows/Linux demo artifacts with native launch validation
 
 ## Steam alpha
