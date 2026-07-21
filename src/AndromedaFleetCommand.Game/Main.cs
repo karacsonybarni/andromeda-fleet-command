@@ -353,14 +353,17 @@ public sealed partial class Main : Node2D
         }
         else if (_trailerStage == 2 && _trailerTime >= 13)
         {
-            IssueTrailerCommand("Frigate Two, intercept the nearest bomber");
+            SelectPlayerShip(1);
+            ActivateSelectedAbility();
+            IssueTrailerCommand("All ships, attack the nearest enemy");
             _trailerStage++;
         }
         else if (_trailerStage == 3 && _trailerTime >= 18)
         {
+            _simulation.LoadMission(MissionId.BlackSun);
+            StartReplayRecording();
+            IssueTrailerCommand("All ships, attack the enemy flagship");
             SelectPlayerShip(3);
-            ActivateSelectedAbility();
-            IssueTrailerCommand("Carrier One, defend the flagship");
             _trailerStage++;
         }
         else if (_trailerStage == 4 && _trailerTime >= 25)
