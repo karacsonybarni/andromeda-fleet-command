@@ -52,7 +52,7 @@
 - [x] Persistent controller combat/navigation button remapping with controller-only navigation
 - [ ] Manual ultrawide and subtitle-language validation
 - [ ] Signed Windows and Linux packages
-- [x] Tagged CI workflow for unsigned checksummed Windows/Linux packages
+- [x] Durable GitHub prerelease with unsigned checksummed Windows/Linux packages and a direct Linux download
 - [ ] Steam Deck verification work
 - [x] Public bug-report and player-feedback issue templates
 - [ ] Steam Playtest branch
