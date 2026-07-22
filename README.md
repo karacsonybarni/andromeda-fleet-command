@@ -84,12 +84,23 @@ comparison with Unity and Unreal.
 
 ### Verified desktop build
 
-The latest clean `main` package is available from the
-[successful desktop-demo workflow](https://github.com/karacsonybarni/andromeda-fleet-command/actions/workflows/release.yml).
-Its artifact contains separate Windows and Linux archives plus portable SHA-256
-checksums. Both packaged games are launch-tested headlessly on their native
-GitHub-hosted operating systems before the workflow can pass. A graphical
-Windows playtest is still required before public release.
+Download the permanent **[Linux x64 playable alpha](https://github.com/karacsonybarni/andromeda-fleet-command/releases/download/v0.1.0-alpha/AndromedaFleetCommand-Linux-x64.tar.gz)**
+or visit the [GitHub release](https://github.com/karacsonybarni/andromeda-fleet-command/releases/tag/v0.1.0-alpha)
+for Windows and SHA-256 checksum files. Both packages are launch-tested on their
+native GitHub-hosted operating systems before publication. They are unsigned
+alpha builds; a graphical Windows playtest is still required before public release.
+
+On Linux, extract the complete archive—the executable needs the bundled runtime
+directory beside it—then launch:
+
+~~~bash
+tar -xzf AndromedaFleetCommand-Linux-x64.tar.gz
+chmod +x AndromedaFleetCommand.x86_64
+./AndromedaFleetCommand.x86_64
+~~~
+
+Future clean packages remain available from the
+[desktop-demo workflow](https://github.com/karacsonybarni/andromeda-fleet-command/actions/workflows/release.yml).
 
 ### Run from source
 

@@ -173,3 +173,43 @@ jobs:
           if ($log -match "invalid UID|Unhandled exception|InvalidOperationException") {
             throw "Packaged game emitted an initialization error"
           }
+
+  publish-alpha:
+    needs: [package, windows-smoke]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: AndromedaFleetCommand-${{ github.run_id }}
+          path: dist/packages
+      - name: Verify release packages
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd dist/packages
+          sha256sum -c SHA256SUMS.txt
+          tar -tzf AndromedaFleetCommand-Linux-x64.tar.gz > /tmp/linux-package-contents.txt
+          grep -Fxq './AndromedaFleetCommand.x86_64' /tmp/linux-package-contents.txt
+      - name: Publish first playable alpha
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="v0.1.0-alpha"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "$tag already exists; keeping the published alpha immutable."
+            exit 0
+          fi
+          gh release create "$tag" \
+            dist/packages/AndromedaFleetCommand-Linux-x64.tar.gz \
+            dist/packages/AndromedaFleetCommand-Windows-x64.zip \
+            dist/packages/SHA256SUMS.txt \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Andromeda Fleet Command v0.1.0 Alpha" \
+            --prerelease \
+            --notes "First playable desktop alpha. The Linux archive contains the executable, self-contained .NET/Godot runtime, bundled whisper.cpp voice runtime, licenses, and README. Both Linux and Windows packages passed native launch smoke tests before publication."
