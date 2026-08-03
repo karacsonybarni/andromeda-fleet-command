@@ -4,7 +4,7 @@
 
 - [x] Switchable allied fleet
 - [x] Deterministic pilots and enemy director
-- [x] Manual flight and weapons
+- [x] Simultaneous-turn maneuver and weapons planning
 - [x] Natural-language command console
 - [x] Local Ollama adapter with offline fallback
 - [x] Local whisper.cpp microphone adapter
@@ -28,7 +28,7 @@
 - [x] Original seamless background theme with a recognizable melodic hook
 - [x] Layered procedural stereo combat feedback and mix pass
 - [ ] Optional professional voice performances
-- [x] Four-beat Captain's Drill for switching, manual flight, fleet orders, and abilities
+- [x] Five-beat Captain's Drill for selection, maneuvers, fleet orders, abilities, and turn commitment
 - [ ] Validate a first satisfying spoken order within two minutes on supported hardware
 - [x] In-game local-AI readiness diagnostics, Ollama pull, and speech-model download
 - [x] Bundle verified whisper.cpp executables for one-click Windows/Linux voice setup
@@ -44,10 +44,10 @@
 - [x] Optional runtime-detected GodotSteam achievement adapter
 - [ ] Steam lobbies, invitations, Cloud synchronization, and Workshop
 - [x] Deterministic input recording and final-state replay checksum validation
-- [x] Authoritative command ownership, sequence, and tick-window validation core
+- [x] Authoritative command ownership, sequence, turn-window, and all-captains-ready validation core
 - [x] Direct-IP ENet host/client transport, in-game lobbies, co-op vs bots, balanced PvP, and snapshot recovery
 - [ ] Steam lobby/invitation/relay adapter, host migration, reconnection, and adversarial network soak testing
-- [x] Persistent settings, gamepad flight/combat, color-vision palettes, captions, and reduced flashes
+- [x] Persistent settings, gamepad turn planning, color-vision palettes, captions, and reduced flashes
 - [x] Persistent conflict-safe keyboard action rebinding with dynamic HUD and tutorial prompts
 - [x] Persistent controller combat/navigation button remapping with controller-only navigation
 - [ ] Manual ultrawide and subtitle-language validation

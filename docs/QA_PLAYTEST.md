@@ -34,7 +34,20 @@ The 450-minute total remains an authored target until this protocol has external
 results. Automated simulation victories prove objective reachability and regression safety;
 they are intentionally not substituted for human pacing evidence.
 
-## Historical Act I automated QA — 2026-07-15
+## Turn-based conversion automated QA — 2026-08-03
+
+The executable core suite now plays all 24 missions through the same public planning API used
+by the game: parsed fleet orders, per-ship maneuver plans, queued abilities, ship selection,
+and explicit turn commitment. Thinking time advances no state. Every mission reached victory
+in the deterministic run, with objective protection and finite-state assertions checked after
+each resolution. Automated victories required 3–12 tactical turns (10.6–38.7 simulated combat
+seconds); these accelerated numbers demonstrate reachability and balance regression safety,
+not the authored human reading, planning, and decision-time target.
+
+The same suite verifies exact turn replay checksums and a two-captain barrier where the host
+cannot resolve until both players commit. Results: **45 tests, 0 failures**.
+
+## Historical pre-turn-conversion Act I automated QA — 2026-07-15
 
 ## Scope and method
 

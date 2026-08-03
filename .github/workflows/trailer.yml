@@ -61,9 +61,34 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          ffmpeg -hide_banner -i trailer/andromeda-fleet-command.avi \
+            -af loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json \
+            -f null - 2> trailer/loudnorm-pass-1.txt
+          eval "$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          report = Path("trailer/loudnorm-pass-1.txt").read_text(encoding="utf-8")
+          start = report.rfind("{")
+          end = report.rfind("}")
+          if start < 0 or end < start:
+              raise SystemExit("FFmpeg did not emit loudnorm measurements")
+          values = json.loads(report[start : end + 1])
+          variables = {
+              "INPUT_I": "input_i",
+              "INPUT_TP": "input_tp",
+              "INPUT_LRA": "input_lra",
+              "INPUT_THRESH": "input_thresh",
+              "TARGET_OFFSET": "target_offset",
+          }
+          for variable, key in variables.items():
+              print(f"{variable}={float(values[key])}")
+          PY
+          )"
           ffmpeg -y -i trailer/andromeda-fleet-command.avi \
             -c:v libx264 -preset medium -crf 18 -pix_fmt yuv420p \
-            -af loudnorm=I=-16:TP=-1.5:LRA=11 -c:a aac -b:a 192k -movflags +faststart \
+            -af "loudnorm=I=-16:TP=-1.5:LRA=11:measured_I=${INPUT_I}:measured_TP=${INPUT_TP}:measured_LRA=${INPUT_LRA}:measured_thresh=${INPUT_THRESH}:offset=${TARGET_OFFSET}:linear=true" \
+            -c:a aac -b:a 192k -movflags +faststart \
             trailer/andromeda-fleet-command-trailer.mp4
           python3 scripts/verify-trailer.py trailer/andromeda-fleet-command-trailer.mp4
           ffmpeg -i trailer/andromeda-fleet-command-trailer.mp4 \

@@ -7,7 +7,7 @@ long-term Steam goals from being mixed together in campaign copy.
 
 - Local deterministic fleet simulation with no hosted runtime dependency
 - Instant control switching between allied ships
-- Manual flight, weapons, and four role-specific tactical abilities
+- Paused per-ship maneuver planning, weapons, and four role-specific tactical abilities
 - Six original scalable vector ship classes with faction tinting and engine/shield effects
 - Typed natural-language orders with a safe offline parser
 - Optional local Ollama interpretation and packaged whisper.cpp push-to-talk adapters
@@ -18,7 +18,7 @@ long-term Steam goals from being mixed together in campaign copy.
 - Mission-specific objectives, protected-ship failure conditions, unlocks, and local saves
 - Automatic per-mission attempts, outcomes, active-time telemetry, and a shareable Markdown pacing report
 - Guided first mission and procedural tactical audio cues
-- Persistent accessibility settings, conflict-safe keyboard/controller remapping, gamepad flight,
+- Persistent accessibility settings, conflict-safe keyboard/controller remapping, gamepad turn planning,
   captions, reduced flashes, and crash reports
 - Deterministic replay validation, a headless benchmark, and structured player-feedback forms
 - Player-hosted multiplayer for up to four captains, with authoritative co-op and PvP sessions,

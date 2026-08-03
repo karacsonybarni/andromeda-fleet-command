@@ -9,6 +9,7 @@ public static class GameActionIds
     public const string TurnLeft = "turn-left";
     public const string TurnRight = "turn-right";
     public const string Fire = "fire";
+    public const string EndTurn = "end-turn";
     public const string Ability = "ability";
     public const string Command = "command";
     public const string Voice = "voice";
@@ -26,11 +27,12 @@ public static class GameActions
 {
     public static IReadOnlyList<GameActionDescriptor> All { get; } =
     [
-        new(GameActionIds.Thrust, "Thrust", "W"),
-        new(GameActionIds.Reverse, "Reverse", "S"),
-        new(GameActionIds.TurnLeft, "Turn left", "A"),
-        new(GameActionIds.TurnRight, "Turn right", "D"),
-        new(GameActionIds.Fire, "Fire weapons", "Space"),
+        new(GameActionIds.Thrust, "Plot forward burn", "W"),
+        new(GameActionIds.Reverse, "Plot reverse burn", "S"),
+        new(GameActionIds.TurnLeft, "Plot port maneuver", "A"),
+        new(GameActionIds.TurnRight, "Plot starboard maneuver", "D"),
+        new(GameActionIds.Fire, "Plot weapons attack", "F"),
+        new(GameActionIds.EndTurn, "Commit / end turn", "Space"),
         new(GameActionIds.Ability, "Tactical ability", "Q"),
         new(GameActionIds.Command, "Command channel", "Enter"),
         new(GameActionIds.Voice, "Voice command", "V"),

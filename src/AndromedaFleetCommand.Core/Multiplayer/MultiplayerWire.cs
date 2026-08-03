@@ -7,7 +7,7 @@ public sealed record MatchStartMessage(FleetLobbySnapshot Lobby, AuthoritativeSn
 
 public static class MultiplayerWire
 {
-    public const int ProtocolVersion = 1;
+    public const int ProtocolVersion = 2;
     public const int MaximumPayloadCharacters = 262_144;
     private static readonly JsonSerializerOptions Options = new()
     {

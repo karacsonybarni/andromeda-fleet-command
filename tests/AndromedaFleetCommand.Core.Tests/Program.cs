@@ -13,7 +13,8 @@ var tests = new (string Name, Action Body)[]
     ("Parser handles intercept, defend, and movement", ParserHandlesOrders),
     ("Parser safely rejects unknown input", ParserRejectsUnknownInput),
     ("Simulation is deterministic", SimulationIsDeterministic),
-    ("Manual control moves selected ship", ManualControlMovesShip),
+    ("Planning is paused until a turn is committed", PlanningWaitsForCommit),
+    ("Planned maneuvers resolve selected ships", PlannedManeuverMovesShip),
     ("Dispatcher assigns bounded orders", DispatcherAssignsOrders),
     ("Ship abilities are bounded by cooldowns", ShipAbilitiesUseCooldowns),
     ("Damage and victory rules work", DamageAndVictoryRules),
@@ -47,6 +48,7 @@ var tests = new (string Name, Action Body)[]
     ("Authoritative session rejects unauthorized commands", AuthoritativeSessionRejectsUnauthorizedCommands),
     ("Authoritative session applies owned commands", AuthoritativeSessionAppliesOwnedCommands),
     ("Authoritative session accepts enemy-team captains", AuthoritativeSessionAcceptsEnemyTeamCaptains),
+    ("Multiplayer turn waits for every captain", MultiplayerTurnWaitsForEveryCaptain),
     ("Authoritative session applies manual control and abilities", AuthoritativeSessionAppliesControlAndAbilities),
     ("Authoritative snapshots recover divergent clients", AuthoritativeSnapshotsRecoverDivergentClients),
     ("Disconnected captains release manual control", DisconnectedCaptainsReleaseManualControl),
@@ -115,10 +117,10 @@ static void SimulationIsDeterministic()
 {
     var left = new BattleSimulation(42);
     var right = new BattleSimulation(42);
-    for (var tick = 0; tick < 900; tick++)
+    for (var turn = 0; turn < 8; turn++)
     {
-        left.Update(BattleSimulation.FixedStep);
-        right.Update(BattleSimulation.FixedStep);
+        left.ResolveTurn();
+        right.ResolveTurn();
     }
     for (var index = 0; index < left.Ships.Count; index++)
     {
@@ -131,15 +133,31 @@ static void SimulationIsDeterministic()
     }
 }
 
-static void ManualControlMovesShip()
+static void PlanningWaitsForCommit()
+{
+    var simulation = new BattleSimulation(1);
+    var before = SimulationChecksum.Compute(simulation);
+    True(simulation.CanPlan, "Battle opens in planning");
+    Equal(TurnPhase.Planning, simulation.Phase, "Planning phase is explicit");
+    Equal(before, SimulationChecksum.Compute(simulation), "Waiting does not advance state");
+    True(simulation.BeginTurnResolution(), "Captain can commit a plan");
+    True(!simulation.BeginTurnResolution(), "A resolving turn cannot be committed twice");
+    Equal(TurnPhase.Resolving, simulation.Phase, "Resolution phase is explicit");
+    simulation.AdvanceResolution(BattleSimulation.ResolutionStep);
+    True(simulation.ElapsedSeconds > 0, "Only resolution advances battle time");
+}
+
+static void PlannedManeuverMovesShip()
 {
     var simulation = new BattleSimulation(1);
     var flagship = simulation.SelectedShip;
     var startX = flagship.Position.X;
-    simulation.SetManualInput(new(true, false, false, false, false));
-    for (var tick = 0; tick < 120; tick++) simulation.Update(BattleSimulation.FixedStep);
+    True(simulation.PlanManeuver(new(true, false, false, false, false)), "Burn is accepted during planning");
+    True(simulation.ResolveTurn(), "Planned turn resolves");
     True(flagship.Position.X > startX + 20, "Thrust moves the selected ship");
     True(flagship.Velocity.Length <= flagship.Stats.MaxSpeed + 1e-9, "Speed is capped");
+    Equal(2, simulation.TurnNumber, "Completed resolution opens the next turn");
+    Equal(TurnPhase.Planning, simulation.Phase, "Resolution returns to planning");
 }
 
 static void DispatcherAssignsOrders()
@@ -168,8 +186,10 @@ static void ShipAbilitiesUseCooldowns()
     var simulation = new BattleSimulation(6);
     var first = simulation.TryActivateSelectedAbility();
     var second = simulation.TryActivateSelectedAbility();
-    True(first.Contains("command pulse", StringComparison.OrdinalIgnoreCase), "Flagship ability activates");
-    True(second.Contains("ready in", StringComparison.OrdinalIgnoreCase), "Ability cannot be spammed");
+    True(first.Contains("queued", StringComparison.OrdinalIgnoreCase), "Flagship ability queues");
+    True(second.Contains("already queued", StringComparison.OrdinalIgnoreCase), "Ability cannot be spammed");
+    Near(0, simulation.SelectedShip.AbilityCooldown, 1e-9, "Planning does not execute the ability early");
+    simulation.ResolveTurn();
     True(simulation.SelectedShip.AbilityCooldown > 0, "Ability cooldown is recorded");
 }
 
@@ -181,7 +201,7 @@ static void DamageAndVictoryRules()
     flagship.ApplyDamage(50);
     Near(hull, flagship.Hull, 1e-9, "Shield absorbs initial damage");
     flagship.ApplyDamage(10_000);
-    simulation.Update(BattleSimulation.FixedStep);
+    simulation.ResolveTurn();
     Equal(BattleStatus.PlayerVictory, simulation.Status, "Destroying enemy flagship wins");
 }
 
@@ -191,7 +211,7 @@ static void LongBattleMaintainsInvariants()
     var command = new RuleBasedCommandInterpreter().Parse("All ships, attack the enemy flagship").Command!;
     new CommandDispatcher().Dispatch(command, simulation);
     for (var tick = 0; tick < 60 * 150 && simulation.Status == BattleStatus.Active; tick++)
-        simulation.Update(BattleSimulation.FixedStep);
+        simulation.ResolveTurn();
 
     foreach (var ship in simulation.Ships)
     {
@@ -289,19 +309,19 @@ static void MissionObjectivesDetermineStatus()
 {
     var first = new BattleSimulation(MissionId.FirstCommand);
     first.FindShip("enemy-raider-leader")!.ApplyDamage(10_000);
-    first.Update(BattleSimulation.FixedStep);
+    first.ResolveTurn();
     Equal(BattleStatus.PlayerVictory, first.Status, "Destroy-target mission victory");
 
     var defence = new BattleSimulation(MissionId.BrokenShield);
     foreach (var bomber in defence.Ships.Where(ship => ship.Team == Team.Enemy && ship.Class == ShipClass.Bomber))
         bomber.ApplyDamage(10_000);
-    defence.Update(BattleSimulation.FixedStep);
+    defence.ResolveTurn();
     Equal(BattleStatus.PlayerVictory, defence.Status, "Class-elimination mission victory");
     Equal(0, defence.ObjectiveProgress.Remaining, "No bombers remain");
 
     var failed = new BattleSimulation(MissionId.BrokenShield);
     failed.FindShip("player-carrier")!.ApplyDamage(10_000);
-    failed.Update(BattleSimulation.FixedStep);
+    failed.ResolveTurn();
     Equal(BattleStatus.EnemyVictory, failed.Status, "Losing protected carrier fails mission");
 }
 
@@ -310,7 +330,7 @@ static void TotalFleetLossRecordsDefeatSafely()
     var simulation = new BattleSimulation(MissionId.FirstCommand);
     foreach (var ship in simulation.Ships.Where(ship => ship.Team == Team.Player))
         ship.ApplyDamage(10_000);
-    simulation.Update(BattleSimulation.FixedStep);
+    simulation.ResolveTurn();
     Equal(BattleStatus.EnemyVictory, simulation.Status, "Total player fleet loss ends the mission");
     True(simulation.Events.Any(combatEvent =>
             combatEvent.Type == CombatEventType.Order &&
@@ -323,6 +343,7 @@ static void EveryCampaignMissionIsWinnable()
     var parser = new RuleBasedCommandInterpreter();
     var dispatcher = new CommandDispatcher();
     var progress = CampaignProgress.New;
+    var failedMissions = new List<string>();
     for (var missionIndex = 0; missionIndex < MissionCatalog.All.Count; missionIndex++)
     {
         var mission = MissionCatalog.All[missionIndex];
@@ -339,14 +360,15 @@ static void EveryCampaignMissionIsWinnable()
             simulation.CycleSelectedShip();
             shipSwitches++;
             True(tutorial.Notify(TutorialAction.SwitchShip), "Tutorial records a ship switch");
-            simulation.SetManualInput(new(true, false, true, false, true));
-            simulation.Update(BattleSimulation.FixedStep);
-            True(tutorial.Notify(TutorialAction.ManualControl), "Tutorial records direct helm input");
+            simulation.PlanManeuver(new(true, false, true, false, true));
+            True(tutorial.Notify(TutorialAction.PlotManeuver), "Tutorial records a plotted maneuver");
             DispatchOrder(mission.RecommendedOrder);
             True(tutorial.Notify(TutorialAction.IssueOrder), "Tutorial records the recommended fleet order");
             simulation.TryActivateSelectedAbility();
             abilities++;
             True(tutorial.Notify(TutorialAction.ActivateAbility), "Tutorial records tactical ability use");
+            True(tutorial.Notify(TutorialAction.EndTurn), "Tutorial records the first committed turn");
+            simulation.ResolveTurn();
             True(tutorial.IsComplete, "Captain's Drill completes before the first battle ends");
         }
 
@@ -370,10 +392,10 @@ static void EveryCampaignMissionIsWinnable()
             }
         }
 
-        const int maximumTicks = 60 * 240;
-        for (var tick = 0; tick < maximumTicks && simulation.Status == BattleStatus.Active; tick++)
+        const int maximumTurns = 80;
+        for (var turn = simulation.TurnNumber; turn <= maximumTurns && simulation.Status == BattleStatus.Active; turn++)
         {
-            if (mission.Id != MissionId.FirstCommand && tick % (60 * 8) == 0)
+            if (mission.Id != MissionId.FirstCommand && turn % 3 == 0)
             {
                 var fleetCount = simulation.PlayerFleet.Count;
                 for (var shipIndex = 0; shipIndex < fleetCount; shipIndex++)
@@ -391,7 +413,7 @@ static void EveryCampaignMissionIsWinnable()
                     shipSwitches++;
                 }
             }
-            if (tick > 0 && tick % (60 * 12) == 0)
+            if (turn > 1 && turn % 4 == 0)
                 foreach (var order in combatOrders) DispatchOrder(order);
             if (simulation.SelectedShip.AbilityCooldown <= 0)
             {
@@ -399,10 +421,10 @@ static void EveryCampaignMissionIsWinnable()
                 if (simulation.SelectedShip.AbilityCooldown > 0) abilities++;
             }
 
-            simulation.SetManualInput(mission.Objective.ProtectedShipId is not null
+            simulation.PlanManeuver(mission.Objective.ProtectedShipId is not null
                 ? PlayerInputForProtectedShipEvasion(simulation)
                 : PlayerInputForObjective(simulation));
-            simulation.Update(BattleSimulation.FixedStep);
+            simulation.ResolveTurn();
         }
         missionWallClock.Stop();
 
@@ -415,18 +437,15 @@ static void EveryCampaignMissionIsWinnable()
             ? null
             : simulation.FindShip(simulation.Mission.Objective.ProtectedShipId);
         Console.WriteLine($"PLAY  mission={mission.Title} outcome={simulation.Status} " +
-                          $"simulated={simulation.ElapsedSeconds:F1}s wall={missionWallClock.Elapsed.TotalMilliseconds:F0}ms " +
+                          $"turns={simulation.TurnNumber - 1} simulated={simulation.ElapsedSeconds:F1}s wall={missionWallClock.Elapsed.TotalMilliseconds:F0}ms " +
                           $"objective={simulation.ObjectiveProgress.Label.Replace(' ', '_')} " +
                           $"protected_hull={(protectedShip?.HullRatio * 100 ?? 100):F0}% " +
                           $"orders={orders} switches={shipSwitches} abilities={abilities} " +
                           $"player_survivors={simulation.PlayerFleet.Count}");
-        Equal(BattleStatus.PlayerVictory, simulation.Status,
-            $"{mission.Title} can be won with normal controls and parsed orders");
-        True(simulation.ElapsedSeconds is > 2 and <= 240,
-            $"{mission.Title} completes within the four-minute QA limit");
-        True(simulation.Mission.Objective.ProtectedShipId is null ||
-             simulation.FindShip(simulation.Mission.Objective.ProtectedShipId)?.IsAlive == true,
-            $"{mission.Title} protected ship survives");
+        if (simulation.Status != BattleStatus.PlayerVictory || simulation.ElapsedSeconds is <= 2 or > 240 ||
+            (simulation.Mission.Objective.ProtectedShipId is not null &&
+             simulation.FindShip(simulation.Mission.Objective.ProtectedShipId)?.IsAlive != true))
+            failedMissions.Add($"{mission.Title}:{simulation.Status}");
         progress = progress.Complete(mission.Id);
 
         void DispatchOrder(string text)
@@ -442,6 +461,8 @@ static void EveryCampaignMissionIsWinnable()
 
     Equal(MissionCatalog.All.Count, progress.CompletedMissions.Count,
         "Representative play completes the campaign");
+    Equal(0, failedMissions.Count,
+        $"Every mission is winnable through representative turn-based play ({string.Join(", ", failedMissions)})");
 }
 
 static ManualInput PlayerInputForObjective(BattleSimulation simulation)
@@ -596,7 +617,7 @@ static void CampaignPacingTelemetryPersistsAndReports()
 static void TutorialAdvancesInOrder()
 {
     var tutorial = new TutorialTracker();
-    Equal(4, TutorialTracker.Steps.Count, "Tutorial stays concise");
+    Equal(5, TutorialTracker.Steps.Count, "Tutorial stays concise");
     True(TutorialTracker.Steps.All(step => !string.IsNullOrWhiteSpace(step.Title) &&
             !string.IsNullOrWhiteSpace(step.KeyboardPrompt) &&
             !string.IsNullOrWhiteSpace(step.ControllerPrompt) &&
@@ -604,13 +625,14 @@ static void TutorialAdvancesInOrder()
         "Every tutorial beat explains action and purpose for both input modes");
     True(!tutorial.Notify(TutorialAction.IssueOrder), "Cannot skip switch-ship step");
     True(tutorial.Notify(TutorialAction.SwitchShip), "Switch step advances");
-    Near(0.25, tutorial.Progress, 1e-9, "Tutorial exposes progress");
-    True(!tutorial.Notify(TutorialAction.IssueOrder), "Cannot skip manual-control step");
-    True(tutorial.Notify(TutorialAction.ManualControl), "Manual-control step advances");
+    Near(0.2, tutorial.Progress, 1e-9, "Tutorial exposes progress");
+    True(!tutorial.Notify(TutorialAction.IssueOrder), "Cannot skip maneuver step");
+    True(tutorial.Notify(TutorialAction.PlotManeuver), "Maneuver step advances");
     True(tutorial.Notify(TutorialAction.IssueOrder), "Order step advances");
     True(tutorial.Notify(TutorialAction.ActivateAbility), "Ability step advances");
+    True(tutorial.Notify(TutorialAction.EndTurn), "Commit step advances");
     True(tutorial.IsComplete, "Tutorial completes");
-    Equal(4, tutorial.CompletedSteps, "Tutorial reports completed steps");
+    Equal(5, tutorial.CompletedSteps, "Tutorial reports completed steps");
     True(tutorial.GetPrompt(true).Contains("CAPTAIN CERTIFIED", StringComparison.Ordinal),
         "Completion message is celebratory");
 }
@@ -754,9 +776,9 @@ static void GamepadBindingsCoverActionsAndSwapConflicts()
 
     var rebound = defaults.Rebind(GamepadActionIds.Fire, "B");
     Equal("B", rebound.Get(GamepadActionIds.Fire), "Requested controller button is assigned");
-    Equal("A", rebound.Get(GamepadActionIds.Ability), "Conflicting action receives the previous button");
+    Equal("RightStick", rebound.Get(GamepadActionIds.Ability), "Conflicting action receives the previous button");
     var restored = rebound.Reset(GamepadActionIds.Fire);
-    Equal("A", restored.Get(GamepadActionIds.Fire), "Controller action restores its default");
+    Equal("RightStick", restored.Get(GamepadActionIds.Fire), "Controller action restores its default");
     Equal("B", restored.Get(GamepadActionIds.Ability), "Controller reset remains conflict-free");
 }
 
@@ -790,28 +812,27 @@ static void RecordedBattlesReplayDeterministically()
     var recorder = new ReplayRecorder(MissionId.BlackSun, 77);
     var dispatcher = new CommandDispatcher();
     var command = new FleetCommand("all", OrderType.Attack, "enemy flagship");
-    recorder.RecordCommand(0, command);
+    recorder.RecordCommand(1, command);
     dispatcher.Dispatch(command, simulation);
-    var finalTick = 0;
-    for (var tick = 0; tick < 900 && simulation.Status == BattleStatus.Active; tick++)
+    for (var turn = 1; turn <= 8 && simulation.Status == BattleStatus.Active; turn++)
     {
-        var input = tick < 40 ? new ManualInput(true, false, false, false, tick % 8 == 0) : ManualInput.None;
-        recorder.RecordInput(tick, input);
-        if (tick == 60)
+        var input = new ManualInput(true, false, turn % 2 == 0, false, turn % 3 == 0);
+        recorder.RecordManeuver(turn, input);
+        simulation.PlanManeuver(input);
+        if (turn == 2)
         {
-            recorder.RecordShipSelection(tick, 1);
+            recorder.RecordShipSelection(turn, 1);
             simulation.SelectPlayerShip(1);
         }
-        if (tick == 61)
+        if (turn == 3)
         {
-            recorder.RecordAbility(tick);
+            recorder.RecordAbility(turn);
             simulation.TryActivateSelectedAbility();
         }
-        simulation.SetManualInput(input);
-        simulation.Update(BattleSimulation.FixedStep);
-        finalTick++;
+        recorder.RecordEndTurn(turn);
+        simulation.ResolveTurn();
     }
-    var replay = recorder.Complete(finalTick, simulation);
+    var replay = recorder.Complete(simulation.TurnNumber, simulation);
     True(ReplayRunner.Validate(replay), "Replay checksum matches recorded battle");
 }
 
@@ -821,15 +842,17 @@ static void ReplayFilesPersistSafely()
     try
     {
         var simulation = new BattleSimulation(MissionId.FirstCommand, 91);
-        simulation.Update(BattleSimulation.FixedStep);
-        var replay = new ReplayRecorder(MissionId.FirstCommand, 91).Complete(1, simulation);
+        var recorder = new ReplayRecorder(MissionId.FirstCommand, 91);
+        recorder.RecordEndTurn(1);
+        simulation.ResolveTurn();
+        var replay = recorder.Complete(simulation.TurnNumber, simulation);
         var store = new BattleReplayStore(directory);
         store.Save(replay);
         var loaded = store.LoadLatest();
         True(loaded is not null, "Replay loads");
         Equal(replay.MissionId, loaded!.MissionId, "Replay mission round-trips");
         Equal(replay.Seed, loaded.Seed, "Replay seed round-trips");
-        Equal(replay.FinalTick, loaded.FinalTick, "Replay tick count round-trips");
+        Equal(replay.FinalTurn, loaded.FinalTurn, "Replay turn count round-trips");
         Equal(replay.ExpectedChecksum, loaded.ExpectedChecksum, "Replay checksum round-trips");
         True(replay.Events.SequenceEqual(loaded.Events), "Replay events round-trip");
         File.WriteAllText(Directory.GetFiles(directory).Single(), "broken");
@@ -845,8 +868,8 @@ static void SimulationChecksumDetectsChanges()
 {
     var simulation = new BattleSimulation(MissionId.FirstCommand);
     var before = SimulationChecksum.Compute(simulation);
-    simulation.SetManualInput(new(true, false, false, false, false));
-    simulation.Update(BattleSimulation.FixedStep);
+    simulation.PlanManeuver(new(true, false, false, false, false));
+    simulation.ResolveTurn();
     var after = SimulationChecksum.Compute(simulation);
     True(!before.Equals(after, StringComparison.Ordinal), "Checksum changes with simulation state");
 }
@@ -931,11 +954,11 @@ static void AuthoritativeSessionRejectsUnauthorizedCommands()
 {
     var session = new AuthoritativeFleetSession(MissionId.BlackSun, 44);
     session.AssignPlayer("captain", "player-frigate");
-    var enemy = session.Submit(new(1, 0, "captain", "enemy-flagship", OrderType.Attack, "player flagship"));
+    var enemy = session.Submit(new(1, 1, "captain", "enemy-flagship", OrderType.Attack, "player flagship"));
     True(!enemy.Accepted, "Players cannot command enemy ships");
-    var unowned = session.Submit(new(2, 0, "captain", "player-carrier", OrderType.Attack, "enemy flagship"));
+    var unowned = session.Submit(new(2, 1, "captain", "player-carrier", OrderType.Attack, "enemy flagship"));
     True(!unowned.Accepted, "Players cannot command another player's ship");
-    var unknown = session.Submit(new(3, 0, "intruder", "player-frigate", OrderType.Attack, "enemy flagship"));
+    var unknown = session.Submit(new(3, 1, "intruder", "player-frigate", OrderType.Attack, "enemy flagship"));
     True(!unknown.Accepted, "Unknown players are rejected");
 }
 
@@ -943,12 +966,14 @@ static void AuthoritativeSessionAppliesOwnedCommands()
 {
     var session = new AuthoritativeFleetSession(MissionId.BlackSun, 45);
     session.AssignPlayer("captain", "player-frigate");
-    var command = new NetworkFleetCommand(1, 0, "captain", "player-frigate",
+    var command = new NetworkFleetCommand(1, 1, "captain", "player-frigate",
         OrderType.Attack, "enemy flagship");
     True(session.Submit(command).Accepted, "Owned command is admitted");
     True(!session.Submit(command).Accepted, "Duplicate sequence is rejected");
-    var snapshot = session.Step();
-    Equal(1, snapshot.ServerTick, "Server tick advances");
+    var result = session.CommitTurn(new(2, 1, "captain"));
+    True(result.Accepted && result.Resolved && result.Snapshot is not null, "Sole captain resolves the turn");
+    var snapshot = result.Snapshot!;
+    Equal(2, snapshot.ServerTurn, "Server turn advances");
     Equal(OrderType.Attack, session.Simulation.FindShip("player-frigate")!.Order.Type,
         "Accepted command reaches the simulation");
     Equal("enemy-flagship", session.Simulation.FindShip("player-frigate")!.Order.TargetId,
@@ -959,10 +984,10 @@ static void AuthoritativeSessionAcceptsEnemyTeamCaptains()
 {
     var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 47);
     session.AssignPlayer("ketzal", "enemy-frigate");
-    var command = new NetworkFleetCommand(1, 0, "ketzal", "enemy-frigate",
+    var command = new NetworkFleetCommand(1, 1, "ketzal", "enemy-frigate",
         OrderType.Attack, "flagship");
     True(session.Submit(command).Accepted, "Enemy-team order is admitted");
-    session.Step();
+    session.CommitTurn(new(2, 1, "ketzal"));
     Equal("player-flagship", session.Simulation.FindShip("enemy-frigate")!.Order.TargetId,
         "Enemy-team target resolution points at Andromeda");
 }
@@ -973,29 +998,51 @@ static void AuthoritativeSessionAppliesControlAndAbilities()
     session.AssignPlayer("captain", "player-frigate");
     var ship = session.Simulation.FindShip("player-frigate")!;
     var start = ship.Position;
-    True(session.SubmitControl(new(1, 0, "captain", ship.Id,
-        new(true, false, false, false, false))).Accepted, "Manual input is admitted");
-    for (var tick = 0; tick < 20; tick++) session.Step();
-    True(ship.Position.DistanceTo(start) > 0.1, "Manual thrust moves the owned ship");
-    True(session.SubmitControl(new(2, session.ServerTick, "captain", ship.Id,
-        ManualInput.None, ActivateAbility: true)).Accepted, "Ability input is admitted");
-    session.Step();
+    True(session.SubmitControl(new(1, 1, "captain", ship.Id,
+        new(true, false, false, false, false))).Accepted, "Planned maneuver is admitted");
+    True(session.SubmitControl(new(2, 1, "captain", ship.Id,
+        ManualInput.None, ActivateAbility: true)).Accepted, "Ability plan is admitted");
+    var commit = session.CommitTurn(new(3, 1, "captain"));
+    True(commit.Resolved, "Tactical plans resolve after commit");
+    True(ship.Position.DistanceTo(start) > 0.1, "Planned thrust moves the owned ship");
     True(ship.AbilityCooldown > 0, "Owned ship ability activates on the server");
-    True(!session.Submit(new(2, session.ServerTick, "captain", ship.Id, OrderType.Hold)).Accepted,
+    True(!session.Submit(new(2, session.ServerTurn, "captain", ship.Id, OrderType.Hold)).Accepted,
         "Control and order packets share duplicate protection");
+}
+
+static void MultiplayerTurnWaitsForEveryCaptain()
+{
+    var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 481);
+    session.AssignPlayer("blue", "player-flagship");
+    session.AssignPlayer("red", "enemy-flagship");
+    True(session.Submit(new(1, 1, "blue", "player-flagship", OrderType.Attack,
+        "enemy flagship")).Accepted, "Blue plan is accepted");
+    True(session.Submit(new(1, 1, "red", "enemy-flagship", OrderType.Attack,
+        "player flagship")).Accepted, "Red plan is accepted");
+
+    var waiting = session.CommitTurn(new(2, 1, "blue"));
+    True(waiting.Accepted && !waiting.Resolved, "First captain waits");
+    Equal(1, session.ServerTurn, "Thinking time cannot advance the server turn");
+    True(!session.Submit(new(3, 1, "blue", "player-flagship", OrderType.Hold)).Accepted,
+        "A ready captain cannot alter a committed plan");
+
+    var resolved = session.CommitTurn(new(2, 1, "red"));
+    True(resolved.Accepted && resolved.Resolved && resolved.Snapshot is not null,
+        "Last captain resolves both plans");
+    Equal(2, session.ServerTurn, "Both fleets advance exactly one turn");
+    Equal(TurnPhase.Planning, session.Simulation.Phase, "Next planning phase opens after resolution");
 }
 
 static void AuthoritativeSnapshotsRecoverDivergentClients()
 {
     var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 49);
     session.AssignPlayer("captain", "player-destroyer");
-    session.SubmitControl(new(1, 0, "captain", "player-destroyer",
+    session.SubmitControl(new(1, 1, "captain", "player-destroyer",
         new(true, false, false, true, true)));
-    AuthoritativeSnapshot snapshot = session.Snapshot();
-    for (var tick = 0; tick < 25; tick++) snapshot = session.Step();
+    var snapshot = session.CommitTurn(new(2, 1, "captain")).Snapshot!;
 
     var client = new BattleSimulation(MissionId.FirstCommand, 999);
-    client.Update(BattleSimulation.FixedStep);
+    client.ResolveTurn();
     client.ApplyFrame(snapshot.Frame);
     Equal(snapshot.Checksum, SimulationChecksum.Compute(client), "Snapshot restores the authoritative checksum");
     Equal(snapshot.Status, client.Status, "Snapshot restores battle status");
@@ -1006,15 +1053,13 @@ static void DisconnectedCaptainsReleaseManualControl()
 {
     var session = new AuthoritativeFleetSession(MissionId.FleetDuel, 50);
     session.AssignPlayer("captain", "player-frigate");
-    session.SubmitControl(new(1, 0, "captain", "player-frigate",
+    session.SubmitControl(new(1, 1, "captain", "player-frigate",
         new(true, false, false, false, false)));
-    session.Step();
-    True(session.Simulation.FindShip("player-frigate")!.IsManuallyControlled,
-        "Connected captain has the helm");
     True(session.UnassignPlayer("captain"), "Captain is removed");
-    session.Step();
+    session.AssignPlayer("replacement", "player-frigate");
+    session.CommitTurn(new(1, 1, "replacement"));
     True(!session.Simulation.FindShip("player-frigate")!.IsManuallyControlled,
-        "Disconnected helm returns to the deterministic pilot");
+        "Disconnected captain's pending maneuver is discarded");
 }
 
 static void AuthoritativeSessionsRemainDeterministic()
@@ -1024,13 +1069,16 @@ static void AuthoritativeSessionsRemainDeterministic()
     foreach (var session in new[] { left, right })
     {
         session.AssignPlayer("captain", "player-frigate");
-        session.Submit(new(1, 0, "captain", "player-frigate", OrderType.Intercept, "nearest bomber"));
+        session.Submit(new(1, 1, "captain", "player-frigate", OrderType.Intercept, "nearest bomber"));
     }
-    for (var tick = 0; tick < 600; tick++)
+    long sequence = 2;
+    for (var turn = 1; turn <= 15 && left.Simulation.Status == BattleStatus.Active; turn++)
     {
-        var a = left.Step();
-        var b = right.Step();
-        Equal(a.Checksum, b.Checksum, "Authoritative checksum remains deterministic");
+        var a = left.CommitTurn(new(sequence, turn, "captain"));
+        var b = right.CommitTurn(new(sequence, turn, "captain"));
+        True(a.Resolved && b.Resolved, "Matching captains resolve each turn");
+        Equal(a.Snapshot!.Checksum, b.Snapshot!.Checksum, "Authoritative checksum remains deterministic");
+        sequence++;
     }
 }
 

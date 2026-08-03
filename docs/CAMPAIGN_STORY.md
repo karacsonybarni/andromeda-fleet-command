@@ -43,8 +43,8 @@ their future forever.
 ### 1. First Command — 15 minutes
 
 A routine patrol at Nysa Reach becomes a rescue when raiders trap a civilian
-convoy. The player learns to switch ships, fly directly, issue a natural-language
-order, and use a tactical ability. The captured raider core contains a Ketzal
+convoy. The player learns to select ships, plot a maneuver, issue a natural-language
+order, queue a tactical ability, and commit a simultaneous turn. The captured raider core contains a Ketzal
 military cipher, an impossible star map, and the phrase “Black Sun.”
 
 ### 2. Broken Shield — 18 minutes

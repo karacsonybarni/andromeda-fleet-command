@@ -26,6 +26,7 @@ public sealed class CommandDispatcher
     private static string DispatchToSubjects(FleetCommand command, List<Ship> subjects,
         BattleSimulation simulation)
     {
+        if (!simulation.CanPlan) return "Orders can only be changed during planning";
         if (subjects.Count == 0) return $"No available ship matched “{command.ShipSelector}”";
 
         var target = ResolveTarget(command, subjects[0], simulation);
