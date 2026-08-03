@@ -12,6 +12,61 @@ namespace AndromedaFleetCommand.Game;
 
 public sealed partial class Main : Node2D
 {
+    private enum MouseActionKind
+    {
+        None,
+        CloseOverlay,
+        OpenMenu,
+        StartTutorial,
+        SelectShip,
+        Thrust,
+        Reverse,
+        TurnLeft,
+        TurnRight,
+        Fire,
+        Ability,
+        Command,
+        Voice,
+        EndTurn,
+        Pause,
+        Restart,
+        OpenMissions,
+        SelectMission,
+        DeployMission,
+        PreviousMissionPage,
+        NextMissionPage,
+        OpenSettings,
+        OpenBindings,
+        OpenLocalAi,
+        OpenMultiplayer,
+        AdjustVolume,
+        CycleColorMode,
+        ToggleFlashes,
+        ToggleSubtitles,
+        AdjustDeadzone,
+        SelectBinding,
+        ToggleBindingDevice,
+        ResetBindings,
+        RestoreBinding,
+        BackToSettings,
+        RefreshLocalAi,
+        InstallOllama,
+        InstallWhisper,
+        ToggleGpu,
+        HostCoop,
+        HostVersus,
+        JoinMultiplayer,
+        ToggleMultiplayerMode,
+        PreviousMultiplayerMission,
+        NextMultiplayerMission,
+        StartMultiplayer,
+        DisconnectMultiplayer,
+        NextMission
+    }
+
+    private readonly record struct MouseAction(MouseActionKind Kind, int Value = 0);
+    private readonly record struct MouseTarget(Rect2 Rect, MouseAction Action, bool Enabled, string Description);
+
     private const string PlayerFeedbackUrl =
         "https://github.com/karacsonybarni/andromeda-fleet-command/issues/new?template=player-feedback.yml";
 
@@ -89,6 +144,9 @@ public sealed partial class Main : Node2D
     private ReplayRecorder? _replayRecorder;
     private IPlatformServices? _platform;
     private bool _lastInputWasController;
+    private bool _lastInputWasMouse;
+    private Vector2 _mousePosition = new(-1000, -1000);
+    private readonly List<MouseTarget> _mouseTargets = [];
     private bool _gamepadManeuverArmed = true;
     private double _tutorialStepFlash;
     private double _tutorialCelebrationTime;
@@ -561,6 +619,24 @@ public sealed partial class Main : Node2D
 
     public override void _UnhandledInput(InputEvent inputEvent)
     {
+        if (inputEvent is InputEventMouseMotion mouseMotion)
+        {
+            _mousePosition = mouseMotion.Position;
+            _lastInputWasController = false;
+            _lastInputWasMouse = true;
+            QueueRedraw();
+            return;
+        }
+        if (inputEvent is InputEventMouseButton
+            { Pressed: true, ButtonIndex: MouseButton.Left } mouseButton)
+        {
+            _mousePosition = mouseButton.Position;
+            _lastInputWasController = false;
+            _lastInputWasMouse = true;
+            if (HandleMouseClick(mouseButton.Position))
+                GetViewport().SetInputAsHandled();
+            return;
+        }
         if (inputEvent is InputEventJoypadMotion motion)
         {
             var magnitude = Math.Abs(motion.AxisValue);
@@ -593,6 +669,7 @@ public sealed partial class Main : Node2D
         }
         if (inputEvent is not InputEventKey { Pressed: true, Echo: false } key) return;
         _lastInputWasController = false;
+        _lastInputWasMouse = false;
         if (_commandMode)
         {
             if (key.Keycode == Key.Escape) CloseCommandLine("Command cancelled");
@@ -781,6 +858,251 @@ public sealed partial class Main : Node2D
         GetViewport().SetInputAsHandled();
     }
 
+    private bool HandleMouseClick(Vector2 position)
+    {
+        for (var index = _mouseTargets.Count - 1; index >= 0; index--)
+        {
+            var target = _mouseTargets[index];
+            if (!target.Enabled || !target.Rect.HasPoint(position)) continue;
+            ExecuteMouseAction(target.Action);
+            QueueRedraw();
+            return true;
+        }
+        return false;
+    }
+
+    private void ExecuteMouseAction(MouseAction action)
+    {
+        switch (action.Kind)
+        {
+            case MouseActionKind.CloseOverlay:
+                CloseCurrentOverlay();
+                break;
+            case MouseActionKind.OpenMenu:
+                OpenCommandMenu();
+                break;
+            case MouseActionKind.StartTutorial:
+                StartTutorial();
+                break;
+            case MouseActionKind.SelectShip:
+                SelectPlayerShip(action.Value);
+                break;
+            case MouseActionKind.Thrust:
+                PlanHelmAction(new(true, false, false, false, false));
+                break;
+            case MouseActionKind.Reverse:
+                PlanHelmAction(new(false, true, false, false, false));
+                break;
+            case MouseActionKind.TurnLeft:
+                PlanHelmAction(new(true, false, true, false, false));
+                break;
+            case MouseActionKind.TurnRight:
+                PlanHelmAction(new(true, false, false, true, false));
+                break;
+            case MouseActionKind.Fire:
+                PlanHelmAction(new(false, false, false, false, true));
+                break;
+            case MouseActionKind.Ability:
+                ActivateSelectedAbility();
+                break;
+            case MouseActionKind.Command:
+                OpenCommandLine();
+                break;
+            case MouseActionKind.Voice:
+                CaptureVoiceCommand();
+                break;
+            case MouseActionKind.EndTurn:
+                EndTurn();
+                break;
+            case MouseActionKind.Pause:
+                if (_multiplayer?.IsInMatch == true) SetStatus("Online battles cannot be paused");
+                else _paused = !_paused;
+                break;
+            case MouseActionKind.Restart:
+                Restart();
+                break;
+            case MouseActionKind.OpenMissions:
+                if (_multiplayer?.IsInMatch == true) SetStatus("Mission selection is controlled by the host lobby");
+                else
+                {
+                    CloseAllOverlays();
+                    OpenMissionSelect();
+                }
+                break;
+            case MouseActionKind.SelectMission:
+                _missionSelectionIndex = Math.Clamp(action.Value, 0, MissionCatalog.All.Count - 1);
+                break;
+            case MouseActionKind.DeployMission:
+                LoadMission(_missionSelectionIndex);
+                break;
+            case MouseActionKind.PreviousMissionPage:
+                MoveMissionSelection(-6);
+                break;
+            case MouseActionKind.NextMissionPage:
+                MoveMissionSelection(6);
+                break;
+            case MouseActionKind.OpenSettings:
+                CloseAllOverlays();
+                _showSettings = true;
+                break;
+            case MouseActionKind.OpenBindings:
+                _showSettings = false;
+                _showBindings = true;
+                _bindingDeviceGamepad = false;
+                _bindingSelection = 0;
+                _captureBinding = false;
+                break;
+            case MouseActionKind.OpenLocalAi:
+                CloseAllOverlays();
+                _showLocalAiSetup = true;
+                RefreshLocalAiStatus();
+                break;
+            case MouseActionKind.OpenMultiplayer:
+                CloseAllOverlays();
+                ToggleMultiplayerOverlay();
+                break;
+            case MouseActionKind.AdjustVolume:
+                HandleSettingsInput(Key.A);
+                break;
+            case MouseActionKind.CycleColorMode:
+                HandleSettingsInput(Key.C);
+                break;
+            case MouseActionKind.ToggleFlashes:
+                HandleSettingsInput(Key.F);
+                break;
+            case MouseActionKind.ToggleSubtitles:
+                HandleSettingsInput(Key.U);
+                break;
+            case MouseActionKind.AdjustDeadzone:
+                HandleSettingsInput(Key.D);
+                break;
+            case MouseActionKind.SelectBinding:
+                _bindingSelection = Math.Clamp(action.Value, 0,
+                    (_bindingDeviceGamepad ? GamepadActions.All.Count : GameActions.All.Count) - 1);
+                _captureBinding = true;
+                break;
+            case MouseActionKind.ToggleBindingDevice:
+                _bindingDeviceGamepad = !_bindingDeviceGamepad;
+                _bindingSelection = 0;
+                _captureBinding = false;
+                break;
+            case MouseActionKind.ResetBindings:
+                if (_bindingDeviceGamepad)
+                {
+                    _gamepadBindings = GamepadBindings.Default;
+                    _gamepadBindingsStore?.Save(_gamepadBindings);
+                }
+                else
+                {
+                    _bindings = InputBindings.Default;
+                    _bindingsStore?.Save(_bindings);
+                }
+                SetStatus("Controls restored to defaults");
+                break;
+            case MouseActionKind.RestoreBinding:
+                if (_bindingDeviceGamepad)
+                {
+                    var gamepadAction = GamepadActions.All[_bindingSelection];
+                    _gamepadBindings = _gamepadBindings.Reset(gamepadAction.Id);
+                    _gamepadBindingsStore?.Save(_gamepadBindings);
+                }
+                else
+                {
+                    var keyboardAction = GameActions.All[_bindingSelection];
+                    _bindings = _bindings.Reset(keyboardAction.Id);
+                    _bindingsStore?.Save(_bindings);
+                }
+                SetStatus("Control restored to its default");
+                break;
+            case MouseActionKind.BackToSettings:
+                _captureBinding = false;
+                _showBindings = false;
+                _showSettings = true;
+                break;
+            case MouseActionKind.RefreshLocalAi:
+                RefreshLocalAiStatus();
+                break;
+            case MouseActionKind.InstallOllama:
+                InstallOllamaModel();
+                break;
+            case MouseActionKind.InstallWhisper:
+                InstallWhisperModel();
+                break;
+            case MouseActionKind.ToggleGpu:
+                ToggleGpuPreference();
+                break;
+            case MouseActionKind.HostCoop:
+                HandleMultiplayerInput(Key.H);
+                break;
+            case MouseActionKind.HostVersus:
+                HandleMultiplayerInput(Key.V);
+                break;
+            case MouseActionKind.JoinMultiplayer:
+                HandleMultiplayerInput(Key.J);
+                break;
+            case MouseActionKind.ToggleMultiplayerMode:
+                HandleMultiplayerInput(Key.M);
+                break;
+            case MouseActionKind.PreviousMultiplayerMission:
+                HandleMultiplayerInput(Key.Left);
+                break;
+            case MouseActionKind.NextMultiplayerMission:
+                HandleMultiplayerInput(Key.Right);
+                break;
+            case MouseActionKind.StartMultiplayer:
+                HandleMultiplayerInput(Key.Enter);
+                break;
+            case MouseActionKind.DisconnectMultiplayer:
+                HandleMultiplayerInput(Key.D);
+                break;
+            case MouseActionKind.NextMission:
+                LoadMission(MissionCatalog.IndexOf(_simulation.Mission.Id) + 1);
+                break;
+        }
+    }
+
+    private void CloseAllOverlays()
+    {
+        _showHelp = false;
+        _showMissionSelect = false;
+        _showSettings = false;
+        _showBindings = false;
+        _showLocalAiSetup = false;
+        _showMultiplayer = false;
+    }
+
+    private void CloseCurrentOverlay()
+    {
+        if (_showBindings)
+        {
+            _showBindings = false;
+            _showSettings = true;
+            return;
+        }
+        if (_showHelp)
+        {
+            _showHelp = false;
+            return;
+        }
+        CloseAllOverlays();
+    }
+
+    private void OpenCommandMenu()
+    {
+        CloseAllOverlays();
+        _showHelp = true;
+    }
+
+    private void StartTutorial()
+    {
+        LoadMission(0);
+        _tutorial = new();
+        _tutorialCelebrationTime = 0;
+        _tutorialStepFlash = 0;
+        _showHelp = true;
+        SetStatus("Captain's Drill ready");
+    }
+
     private void OpenPlayerFeedback()
     {
         var reportRevealed = false;
@@ -797,6 +1119,7 @@ public sealed partial class Main : Node2D
 
     public override void _Draw()
     {
+        _mouseTargets.Clear();
         DrawSpace();
         var kick = (float)_combatKick;
         _worldDrawOffset = _settings.ReduceFlashes
@@ -1319,6 +1642,7 @@ public sealed partial class Main : Node2D
 
     private void SelectPlayerShip(int index)
     {
+        var previous = _simulation.SelectedShip.Id;
         if (_multiplayer?.IsInMatch == true)
         {
             var ships = LocalSelectableShips();
@@ -1327,11 +1651,13 @@ public sealed partial class Main : Node2D
         }
         _replayRecorder?.RecordShipSelection(_simulation.TurnNumber, index);
         _simulation.SelectPlayerShip(index);
-        AdvanceTutorial(TutorialAction.SwitchShip);
+        if (!_simulation.SelectedShip.Id.Equals(previous, StringComparison.Ordinal))
+            AdvanceTutorial(TutorialAction.SwitchShip);
     }
 
     private void CyclePlayerShip()
     {
+        var previous = _simulation.SelectedShip.Id;
         if (_multiplayer?.IsInMatch == true)
         {
             var ships = LocalSelectableShips();
@@ -1342,11 +1668,20 @@ public sealed partial class Main : Node2D
         }
         _replayRecorder?.RecordShipCycle(_simulation.TurnNumber);
         _simulation.CycleSelectedShip();
-        AdvanceTutorial(TutorialAction.SwitchShip);
+        if (!_simulation.SelectedShip.Id.Equals(previous, StringComparison.Ordinal))
+            AdvanceTutorial(TutorialAction.SwitchShip);
     }
 
     private List<Ship> LocalSelectableShips() => _multiplayer?.LocalShipIds
         .Select(_simulation.FindShip).Where(ship => ship is { IsAlive: true }).Cast<Ship>().ToList() ?? [];
+
+    private int SelectableShipIndex(Ship ship)
+    {
+        var ships = _multiplayer?.IsInMatch == true
+            ? LocalSelectableShips()
+            : _simulation.Ships.Where(candidate => candidate.Team == Team.Player).ToList();
+        return ships.FindIndex(candidate => candidate.Id.Equals(ship.Id, StringComparison.Ordinal));
+    }
 
     private void HandleGamepadButton(JoyButton button)
     {
@@ -2129,6 +2464,18 @@ public sealed partial class Main : Node2D
     private string TutorialPrompt()
     {
         if (_tutorial.IsComplete) return _tutorial.GetPrompt(_lastInputWasController);
+        if (_lastInputWasMouse)
+        {
+            return _tutorial.CurrentStep!.Action switch
+            {
+                TutorialAction.SwitchShip => "Click a different allied ship or its row in FRIENDLY FLEET",
+                TutorialAction.PlotManeuver => "Click one maneuver option: FORWARD, REVERSE, PORT, STARBOARD, or ATTACK",
+                TutorialAction.IssueOrder => "Click TYPE ORDER, enter one fleet order, then press Enter",
+                TutorialAction.ActivateAbility => "Click ABILITY for the selected ship",
+                TutorialAction.EndTurn => "Click COMMIT to execute the plan",
+                _ => _tutorial.CurrentPrompt
+            };
+        }
         if (_lastInputWasController)
         {
             return _tutorial.CurrentStep!.Action switch
@@ -2448,6 +2795,17 @@ public sealed partial class Main : Node2D
             DrawBar(new(position.X - 55, position.Y - visualRadius - 9), 110, 4,
                 (float)ship.HullRatio, teamColor);
         }
+        if (ship.Team == Team.Player)
+        {
+            var selectableIndex = SelectableShipIndex(ship);
+            if (selectableIndex >= 0)
+            {
+                var hitRadius = Mathf.Max(28, visualRadius + 16);
+                RegisterMouseTarget(new(position + _worldDrawOffset - new Vector2(hitRadius, hitRadius),
+                        new Vector2(hitRadius * 2, hitRadius * 2)),
+                    new(MouseActionKind.SelectShip, selectableIndex), ship.IsAlive, $"Select {ship.Name}");
+            }
+        }
     }
 
     private void DrawShipMotionWake(Ship ship, Vector2 position, Color teamColor, float visualRadius)
@@ -2609,6 +2967,8 @@ public sealed partial class Main : Node2D
         DrawCommandLog();
         DrawObjective();
         DrawRadar();
+        DrawNavigationButtons();
+        DrawActionBar();
         DrawTurnControl();
 
         if (!string.IsNullOrWhiteSpace(_status) && !_commandMode)
@@ -2616,15 +2976,62 @@ public sealed partial class Main : Node2D
             DrawPanel(new(510, 87, 580, 38));
             DrawCenteredLabel(_status, 800, 112, 14, new Color("a0e1f5"), 560);
         }
+        else if (_mouseTargets.LastOrDefault(target => target.Enabled && target.Rect.HasPoint(_mousePosition))
+                 is { Description.Length: > 0 } hovered)
+        {
+            DrawPanel(new(510, 87, 580, 38));
+            DrawCenteredLabel(hovered.Description, 800, 112, 14, new Color("a0e1f5"), 560);
+        }
         if (_simulation.Mission.Id == MissionId.FirstCommand && !_showHelp &&
             (!_tutorial.IsComplete || _tutorialCelebrationTime > 0))
             DrawTutorialCoach();
         if (_settings.Subtitles && _audioCaptionTime > 0)
         {
-            DrawPanel(new(530, 681, 540, 36));
-            DrawCenteredLabel($"♪  {_audioCaption}", 800, 705, 13, Colors.White, 510);
+            DrawPanel(new(530, 584, 540, 36));
+            DrawCenteredLabel($"♪  {_audioCaption}", 800, 608, 13, Colors.White, 510);
         }
         DrawDamageAlert();
+    }
+
+    private void DrawNavigationButtons()
+    {
+        DrawMouseButton(new(1110, 18, 142, 38), "MENU", new(MouseActionKind.OpenMenu),
+            description: "Open the command menu");
+        DrawMouseButton(new(1260, 18, 142, 38), "TUTORIAL", new(MouseActionKind.StartTutorial),
+            accent: new Color("ffd065"), description: "Restart Captain's Drill");
+        DrawMouseButton(new(1410, 18, 170, 38), "MISSIONS", new(MouseActionKind.OpenMissions),
+            enabled: _multiplayer?.IsInMatch != true, description: "Choose a campaign mission");
+    }
+
+    private void DrawActionBar()
+    {
+        var active = _simulation.Status == BattleStatus.Active && _simulation.CanPlan && !_paused;
+        DrawPanel(new(326, 633, 928, 76));
+        DrawLabel($"SELECTED  •  {_simulation.SelectedShip.Name.ToUpperInvariant()}", new(342, 651), 10,
+            new Color("9ec9da"));
+        var tutorialAction = _simulation.Mission.Id == MissionId.FirstCommand && !_tutorial.IsComplete
+            ? _tutorial.CurrentStep?.Action
+            : null;
+        var actions = new (string Label, MouseAction Action, TutorialAction? TutorialAction, Color Color)[]
+        {
+            ("FORWARD", new(MouseActionKind.Thrust), TutorialAction.PlotManeuver, Cyan),
+            ("REVERSE", new(MouseActionKind.Reverse), TutorialAction.PlotManeuver, Cyan),
+            ("PORT", new(MouseActionKind.TurnLeft), TutorialAction.PlotManeuver, Cyan),
+            ("STARBOARD", new(MouseActionKind.TurnRight), TutorialAction.PlotManeuver, Cyan),
+            ("ATTACK", new(MouseActionKind.Fire), TutorialAction.PlotManeuver, Red),
+            ("ABILITY", new(MouseActionKind.Ability), TutorialAction.ActivateAbility, new Color("ffd065")),
+            ("TYPE ORDER", new(MouseActionKind.Command), TutorialAction.IssueOrder, new Color("48eba9")),
+            ("COMMIT", new(MouseActionKind.EndTurn), TutorialAction.EndTurn, new Color("ffd065"))
+        };
+        for (var index = 0; index < actions.Length; index++)
+        {
+            var item = actions[index];
+            var enabled = active && (_multiplayer?.IsWaitingForTurn != true ||
+                                      item.Action.Kind != MouseActionKind.EndTurn);
+            DrawMouseButton(new(340 + index * 113, 662, 106, 35), item.Label, item.Action, enabled,
+                selected: tutorialAction == item.TutorialAction, accent: item.Color,
+                description: $"Use {item.Label.ToLowerInvariant()} with the selected ship");
+        }
     }
 
     private void DrawTurnControl()
@@ -2646,6 +3053,8 @@ public sealed partial class Main : Node2D
                   $"{_simulation.PlannedAbilityCount} ABILITIES QUEUED";
             DrawCenteredLabel(planSummary,
                 800, 847, 10, new Color("8eb8ca"), 390);
+            RegisterMouseTarget(new(590, 797, 420, 64), new(MouseActionKind.EndTurn), !waiting,
+                "Commit the current turn");
             return;
         }
         var resolved = 1 - _simulation.ResolutionSecondsRemaining / BattleSimulation.ResolutionDuration;
@@ -2702,15 +3111,22 @@ public sealed partial class Main : Node2D
         {
             var ship = fleet[index];
             var y = 140 + index * 37;
-            if (ship.IsAlive && ship.Id == _simulation.SelectedShip.Id)
-                DrawRect(new(28, y - 11, 234, 32), new Color(0.1f, 0.66f, 0.86f, 0.2f));
+            var selected = ship.IsAlive && ship.Id == _simulation.SelectedShip.Id;
+            if (selected)
+            {
+                DrawRect(new(28, y - 11, 234, 32), new Color(0.1f, 0.66f, 0.86f, 0.28f));
+                DrawLine(new(28, y - 11), new(28, y + 21), Colors.White, 3);
+            }
             DrawLabel($"{index + 1}", new(34, y + 4), 11, ship.IsAlive ? Cyan : new Color("666a72"));
             if (_shipTextures.TryGetValue(ship.Class, out var texture))
                 DrawTextureRect(texture, new Rect2(50, y - 9, 39, 20), false,
                     ship.IsAlive ? new Color(0.76f, 0.88f, 0.95f, 0.92f) : new Color("555b62"));
             DrawLabel(ship.Name.ToUpperInvariant(), new(94, y + 4), 11,
                 ship.IsAlive ? Colors.White : new Color("666a72"));
+            if (selected) DrawLabel("SELECTED", new(190, y + 4), 9, new Color("ffd065"));
             DrawBar(new(142, y + 10), 105, 4, (float)ship.HullRatio, ship.IsAlive ? Cyan : Red);
+            RegisterMouseTarget(new(28, y - 11, 234, 32), new(MouseActionKind.SelectShip, index), ship.IsAlive,
+                $"Select {ship.Name}");
         }
     }
 
@@ -2718,7 +3134,7 @@ public sealed partial class Main : Node2D
     {
         var ship = _simulation.SelectedShip;
         DrawPanel(new(20, 710, 300, 166));
-        DrawLabel(ship.Name.ToUpperInvariant(), new(36, 737), 18, Colors.White);
+        DrawLabel($"SELECTED  •  {ship.Name.ToUpperInvariant()}", new(36, 737), 17, Colors.White);
         DrawLabel($"{ship.Class.ToString().ToUpperInvariant()}  •  TACTICAL PLAN", new(36, 756), 12,
             new Color("82beda"));
         if (_shipTextures.TryGetValue(ship.Class, out var texture))
@@ -2827,6 +3243,9 @@ public sealed partial class Main : Node2D
 
     private void DrawOverlay()
     {
+        if (_showMultiplayer || _showBindings || _showSettings || _showLocalAiSetup || _showMissionSelect ||
+            _showHelp || _paused || _simulation.Status != BattleStatus.Active)
+            _mouseTargets.Clear();
         if (_showMultiplayer)
         {
             DrawMultiplayer();
@@ -2875,6 +3294,7 @@ public sealed partial class Main : Node2D
                 800, 378, 13, Cyan, 820);
             DrawCenteredLabel(mission.Complexity.TacticalFocus, 800, 402, 12,
                 new Color("9fc5d6"), 860);
+            DrawCenteredLabel("COMMAND MENU", 800, 430, 11, new Color("ffd065"), 820);
             var controls = new[]
             {
                 ($"1–4 / {BindingLabel(GameActionIds.SwitchShip)}", "Switch controlled ship"),
@@ -2886,17 +3306,29 @@ public sealed partial class Main : Node2D
                 (BindingLabel(GameActionIds.Ability), "Use the selected ship’s tactical ability"),
                 (BindingLabel(GameActionIds.EndTurn), "Commit plan and resolve both fleets")
             };
-            var y = 455;
+            var y = 468;
             foreach (var (key, description) in controls)
             {
                 DrawLabel(key, new(490, y), 14, Cyan);
                 DrawLabel(description, new(700, y), 15, new Color("dce7ee"));
                 y += 34;
             }
-            DrawCenteredLabel($"Suggested opening: “{mission.RecommendedOrder}”", 800, 690, 14,
+            DrawCenteredLabel($"Suggested opening: “{mission.RecommendedOrder}”", 800, 681, 13,
                 new Color("ffd065"), 700);
-            DrawCenteredLabel($"Press {BindingLabel(GameActionIds.Help)} to enter the battle", 800, 756, 13,
-                new Color("87b5ca"), 700);
+            DrawMouseButton(new(355, 716, 135, 48), "RETURN", new(MouseActionKind.CloseOverlay),
+                accent: new Color("48eba9"), description: "Return to the battle");
+            DrawMouseButton(new(503, 716, 135, 48), "TUTORIAL", new(MouseActionKind.StartTutorial),
+                accent: new Color("ffd065"), description: "Restart Captain's Drill");
+            DrawMouseButton(new(651, 716, 135, 48), "MISSIONS", new(MouseActionKind.OpenMissions),
+                enabled: _multiplayer?.IsInMatch != true, description: "Choose a mission");
+            DrawMouseButton(new(799, 716, 135, 48), "SETTINGS", new(MouseActionKind.OpenSettings),
+                description: "Open settings and controls");
+            DrawMouseButton(new(947, 716, 135, 48), "LOCAL AI", new(MouseActionKind.OpenLocalAi),
+                description: "Configure local AI and voice");
+            DrawMouseButton(new(1095, 716, 135, 48), "ONLINE", new(MouseActionKind.OpenMultiplayer),
+                description: "Open multiplayer");
+            DrawCenteredLabel("Click an option • keyboard and controller shortcuts still work", 800, 790, 12,
+                new Color("87b5ca"), 820);
         }
         else if (_paused && _simulation.Status == BattleStatus.Active)
         {
@@ -2904,6 +3336,8 @@ public sealed partial class Main : Node2D
                 ? GamepadButtonLabel(GamepadActionIds.Pause)
                 : BindingLabel(GameActionIds.Pause);
             DrawBanner("PAUSED", $"Press {pause} to return to the battle", Cyan);
+            DrawMouseButton(new(685, 492, 230, 48), "RESUME", new(MouseActionKind.Pause),
+                accent: new Color("48eba9"));
         }
         else if (_multiplayer?.IsInMatch == true && _simulation.Status != BattleStatus.Active)
         {
@@ -2931,6 +3365,12 @@ public sealed partial class Main : Node2D
                 : $"Crown of Andromeda complete • {restart} to replay • {missions} for mission select";
             DrawStoryOutcome("VICTORY", _simulation.Mission.Narrative.VictoryLines,
                 next, new Color("48eba9"));
+            if (index + 1 < MissionCatalog.All.Count)
+                DrawMouseButton(new(500, 700, 190, 48), "NEXT MISSION", new(MouseActionKind.NextMission),
+                    accent: new Color("48eba9"));
+            DrawMouseButton(new(705, 700, 190, 48), "REPLAY", new(MouseActionKind.Restart),
+                accent: new Color("ffd065"));
+            DrawMouseButton(new(910, 700, 190, 48), "MISSIONS", new(MouseActionKind.OpenMissions));
         }
         else if (_simulation.Status == BattleStatus.EnemyVictory)
         {
@@ -2939,6 +3379,9 @@ public sealed partial class Main : Node2D
                 : BindingLabel(GameActionIds.Restart);
             DrawStoryOutcome("MISSION FAILED", _simulation.Mission.Narrative.FailureLines,
                 $"Press {restart} to regroup and try again", Red);
+            DrawMouseButton(new(600, 700, 190, 48), "RETRY", new(MouseActionKind.Restart),
+                accent: new Color("ffd065"));
+            DrawMouseButton(new(810, 700, 190, 48), "MISSIONS", new(MouseActionKind.OpenMissions));
         }
     }
 
@@ -2955,12 +3398,14 @@ public sealed partial class Main : Node2D
             DrawLabel("CAPTAIN NAME", new(515, 302), 11, new Color("8eb8ca"));
             DrawLabel("HOST ADDRESS", new(515, 392), 11, new Color("8eb8ca"));
             DrawPanel(new(465, 500, 670, 154));
-            DrawCenteredLabel("H  HOST CO-OP VS BOTS", 800, 545, 16, new Color("48eba9"), 620);
-            DrawCenteredLabel("V  HOST PLAYER VS PLAYER", 800, 584, 16, new Color("ffd065"), 620);
-            DrawCenteredLabel("J  JOIN THE ENTERED ADDRESS", 800, 623, 16, Cyan, 620);
+            DrawMouseButton(new(500, 522, 280, 46), "HOST CO-OP VS BOTS", new(MouseActionKind.HostCoop),
+                accent: new Color("48eba9"));
+            DrawMouseButton(new(820, 522, 280, 46), "HOST PLAYER VS PLAYER", new(MouseActionKind.HostVersus),
+                accent: new Color("ffd065"));
+            DrawMouseButton(new(660, 584, 280, 46), "JOIN ADDRESS", new(MouseActionKind.JoinMultiplayer));
             DrawCenteredLabel("Direct IP / LAN • UDP 7777 by default • up to four captains", 800, 700, 13,
                 new Color("9bc9dc"), 700);
-            DrawCenteredLabel("F6 or Esc to close", 800, 765, 12, new Color("789bac"), 700);
+            DrawMouseButton(new(690, 730, 220, 40), "BACK TO MENU", new(MouseActionKind.OpenMenu));
             return;
         }
 
@@ -2969,8 +3414,9 @@ public sealed partial class Main : Node2D
             DrawCenteredLabel("CONNECTING…", 800, 400, 31, new Color("ffd065"), 700);
             DrawCenteredLabel("Establishing an ENet session with the host", 800, 440, 14,
                 new Color("9bc9dc"), 760);
-            DrawCenteredLabel("D disconnects • F6 or Esc closes this panel", 800, 690, 13,
-                new Color("789bac"), 700);
+            DrawMouseButton(new(685, 650, 230, 44), "DISCONNECT", new(MouseActionKind.DisconnectMultiplayer),
+                accent: Red);
+            DrawMouseButton(new(685, 712, 230, 40), "BACK TO BATTLE", new(MouseActionKind.CloseOverlay));
             return;
         }
 
@@ -3013,8 +3459,10 @@ public sealed partial class Main : Node2D
                     ? $"{BindingLabel(GameActionIds.Restart)} starts a synchronized rematch"
                     : "The host controls rematches",
                 800, 690, 14, new Color("ffd065"), 700);
-            DrawCenteredLabel("D disconnects • F6 or Esc returns to battle", 800, 755, 13,
-                new Color("87b5ca"), 700);
+            DrawMouseButton(new(550, 730, 230, 44), "DISCONNECT", new(MouseActionKind.DisconnectMultiplayer),
+                accent: Red);
+            DrawMouseButton(new(820, 730, 230, 44), "RETURN TO BATTLE", new(MouseActionKind.CloseOverlay),
+                accent: new Color("48eba9"));
             return;
         }
 
@@ -3024,16 +3472,22 @@ public sealed partial class Main : Node2D
                         lobby.Players.Any(player => player.Team == Team.Enemy));
         if (_multiplayer.IsHost)
         {
-            DrawCenteredLabel(canStart ? "ENTER  START MATCH" : "VERSUS NEEDS A SECOND CAPTAIN",
-                800, 674, 16, canStart ? new Color("48eba9") : new Color("ffad55"), 700);
-            DrawCenteredLabel("M toggles mode • co-op: ←/→ cycles campaign, 1–3 quick select • D closes",
-                800, 715, 13, new Color("ffd065"), 760);
+            DrawMouseButton(new(470, 648, 180, 44), "← MISSION",
+                new(MouseActionKind.PreviousMultiplayerMission), lobby.Mode == MultiplayerMode.Cooperative);
+            DrawMouseButton(new(670, 648, 260, 44), canStart ? "START MATCH" : "WAITING FOR CAPTAIN",
+                new(MouseActionKind.StartMultiplayer), canStart, accent: new Color("48eba9"));
+            DrawMouseButton(new(950, 648, 180, 44), "MISSION →",
+                new(MouseActionKind.NextMultiplayerMission), lobby.Mode == MultiplayerMode.Cooperative);
+            DrawMouseButton(new(570, 712, 220, 40), "TOGGLE MODE", new(MouseActionKind.ToggleMultiplayerMode),
+                accent: new Color("ffd065"));
+            DrawMouseButton(new(810, 712, 220, 40), "DISCONNECT", new(MouseActionKind.DisconnectMultiplayer),
+                accent: Red);
         }
         else
         {
             DrawCenteredLabel("WAITING FOR THE HOST TO START", 800, 690, 16, new Color("ffd065"), 700);
-            DrawCenteredLabel("D disconnects • F6 or Esc closes this panel", 800, 735, 13,
-                new Color("87b5ca"), 700);
+            DrawMouseButton(new(685, 720, 230, 44), "DISCONNECT", new(MouseActionKind.DisconnectMultiplayer),
+                accent: Red);
         }
     }
 
@@ -3069,27 +3523,28 @@ public sealed partial class Main : Node2D
             DrawCenteredLabel(step.Action switch
             {
                 TutorialAction.SwitchShip =>
-                    $"{BindingLabel(GameActionIds.SwitchShip)}  /  {GamepadButtonLabel(GamepadActionIds.SwitchShip)}",
+                    $"CLICK SHIP  /  {BindingLabel(GameActionIds.SwitchShip)}  /  " +
+                    $"{GamepadButtonLabel(GamepadActionIds.SwitchShip)}",
                 TutorialAction.PlotManeuver =>
-                    $"{BindingLabel(GameActionIds.Thrust)}{BindingLabel(GameActionIds.TurnLeft)}" +
-                    $"{BindingLabel(GameActionIds.Reverse)}{BindingLabel(GameActionIds.TurnRight)}  /  STICK",
+                    $"CLICK ACTION  /  {BindingLabel(GameActionIds.Thrust)}" +
+                    $"{BindingLabel(GameActionIds.TurnLeft)}{BindingLabel(GameActionIds.Reverse)}" +
+                    $"{BindingLabel(GameActionIds.TurnRight)}",
                 TutorialAction.IssueOrder =>
-                    $"{BindingLabel(GameActionIds.Command)}  /  {GamepadButtonLabel(GamepadActionIds.Voice)}",
+                    $"CLICK TYPE ORDER  /  {BindingLabel(GameActionIds.Command)}",
                 TutorialAction.ActivateAbility =>
-                    $"{BindingLabel(GameActionIds.Ability)}  /  {GamepadButtonLabel(GamepadActionIds.Ability)}",
+                    $"CLICK ABILITY  /  {BindingLabel(GameActionIds.Ability)}",
                 _ =>
-                    $"{BindingLabel(GameActionIds.EndTurn)}  /  {GamepadButtonLabel(GamepadActionIds.EndTurn)}"
-            }, x + 107, 490, 14, color, 190);
+                    $"CLICK COMMIT  /  {BindingLabel(GameActionIds.EndTurn)}"
+            }, x + 107, 490, 11, color, 190);
             DrawCenteredLabel(step.Purpose, x + 107, 538, 12, new Color("9fc5d6"), 190);
         }
 
         DrawCenteredLabel($"Objective after training: {_simulation.Mission.Objective.Title}", 800, 638, 16,
             new Color("ffd065"), 900);
-        DrawCenteredLabel(_lastInputWasController ? "Press A or START to deploy" :
-                $"Press {BindingLabel(GameActionIds.Help)} to deploy",
-            800, 700, 18, Colors.White, 900);
-        DrawCenteredLabel("The battle is paused while this briefing is open", 800, 730, 12,
-            new Color("789bac"), 900);
+        DrawMouseButton(new(610, 672, 380, 54), "BEGIN TUTORIAL", new(MouseActionKind.CloseOverlay),
+            accent: new Color("48eba9"), description: "Begin Captain's Drill");
+        DrawCenteredLabel("The tutorial pauses after each instruction until you complete that exact action",
+            800, 750, 12, new Color("9bc9dc"), 900);
     }
 
     private void DrawTutorialCoach()
@@ -3129,9 +3584,11 @@ public sealed partial class Main : Node2D
                 DrawLine(new(673 + index * 90, 153), new(747 + index * 90, 153),
                     new(color, 0.45f), 2);
         }
-        DrawCenteredLabel(step.Title.ToUpperInvariant(), 800, 183, 16, border, 690);
-        DrawCenteredLabel(TutorialPrompt(), 800, 207, 14, Colors.White, 690);
-        DrawCenteredLabel(step.Purpose, 800, 226, 11, new Color("8db6c9"), 690);
+        DrawCenteredLabel($"ONE ACTION NOW  •  STEP {_tutorial.StepNumber}/{TutorialTracker.Steps.Count}",
+            800, 181, 12, border, 690);
+        DrawCenteredLabel(TutorialPrompt(), 800, 207, 15, Colors.White, 690);
+        DrawCenteredLabel($"This stays visible until completed  •  {step.Purpose}", 800, 228, 11,
+            new Color("8db6c9"), 690);
     }
 
     private void DrawMissionSelect()
@@ -3158,8 +3615,12 @@ public sealed partial class Main : Node2D
             var selected = index == _missionSelectionIndex;
             var row = index - pageStart;
             var y = 252 + row * 82;
-            if (selected) DrawRect(new(420, y - 38, 760, 72), new Color(Cyan, 0.13f));
             DrawPanel(new(430, y - 34, 740, 66));
+            if (selected)
+            {
+                DrawRect(new(427, y - 37, 746, 72), new Color(Cyan, 0.95f), false, 3);
+                DrawLabel("SELECTED", new(1050, y + 28), 9, new Color("ffd065"));
+            }
             DrawLabel($"{row + 1}", new(455, y + 5), 23,
                 unlocked ? selected ? new Color("ffd065") : Cyan : new Color("566a73"));
             DrawLabel($"ACT {index / 3 + 1}  •  MISSION {index + 1}", new(505, y - 10), 10,
@@ -3171,17 +3632,22 @@ public sealed partial class Main : Node2D
                 new(825, y + 11), 11, unlocked ? new Color("ffd065") : new Color("66727a"),
                 HorizontalAlignment.Right, 300);
             if (completed) DrawLabel("COMPLETE", new(1040, y - 10), 10, new Color("48eba9"));
+            RegisterMouseTarget(new(430, y - 34, 740, 66), new(MouseActionKind.SelectMission, index), true,
+                $"Select mission {index + 1}: {mission.Title}");
         }
 
-        var navigation = _lastInputWasController
-            ? "D-pad selects • A deploys • B closes"
-            : "↑/↓ select • ←/→ change page • Enter deploys • 1–6 quick deploy";
-        DrawCenteredLabel(navigation, 800, 770, 13, new Color("ffd065"), 780);
+        DrawMouseButton(new(430, 722, 150, 44), "← PAGE", new(MouseActionKind.PreviousMissionPage),
+            enabled: page > 0);
+        DrawMouseButton(new(595, 722, 410, 44), "DEPLOY SELECTED", new(MouseActionKind.DeployMission),
+            enabled: _progress.IsUnlocked(_missionSelectionIndex), accent: new Color("48eba9"));
+        DrawMouseButton(new(1020, 722, 150, 44), "PAGE →", new(MouseActionKind.NextMissionPage),
+            enabled: page + 1 < pageCount);
         var selectedMission = MissionCatalog.All[_missionSelectionIndex];
         DrawCenteredLabel(_progress.IsUnlocked(_missionSelectionIndex)
                 ? selectedMission.Subtitle
                 : "Complete the preceding mission to unlock this operation",
             800, 800, 12, new Color("87b5ca"), 780);
+        DrawMouseButton(new(1070, 785, 100, 30), "MENU", new(MouseActionKind.OpenMenu));
     }
 
     private void DrawLocalAiSetup()
@@ -3211,9 +3677,15 @@ public sealed partial class Main : Node2D
 
         DrawCenteredLabel(_localAiBusy ? "WORKING — this may take several minutes" : _localAiReadiness.Detail,
             800, 625, 14, _localAiBusy ? new Color("ffd065") : new Color("b9d9e7"), 780);
-        DrawCenteredLabel("O  Install model     G  GPU/CPU mode     W  Speech model     R  Rescan",
-            800, 690, 15, new Color("ffd065"), 780);
-        DrawCenteredLabel("L or Esc to close", 800, 735, 13, new Color("87b5ca"), 780);
+        DrawMouseButton(new(430, 665, 170, 44), "INSTALL OLLAMA", new(MouseActionKind.InstallOllama),
+            enabled: !_localAiBusy, accent: new Color("ffd065"));
+        DrawMouseButton(new(615, 665, 170, 44), "GPU / CPU", new(MouseActionKind.ToggleGpu),
+            enabled: !_localAiBusy);
+        DrawMouseButton(new(800, 665, 170, 44), "SPEECH MODEL", new(MouseActionKind.InstallWhisper),
+            enabled: !_localAiBusy, accent: new Color("ffd065"));
+        DrawMouseButton(new(985, 665, 170, 44), "RESCAN", new(MouseActionKind.RefreshLocalAi),
+            enabled: !_localAiBusy);
+        DrawMouseButton(new(690, 730, 220, 40), "BACK TO MENU", new(MouseActionKind.OpenMenu));
     }
 
     private void DrawSettings()
@@ -3223,31 +3695,39 @@ public sealed partial class Main : Node2D
         DrawCenteredLabel("SETTINGS & ACCESSIBILITY", 800, 185, 31, Colors.White, 700);
         DrawCenteredLabel("Changes save immediately", 800, 216, 14, Cyan, 700);
 
-        var rows = new (string Key, string Name, string Value)[]
+        var rows = new (string Key, string Name, string Value, MouseAction Action)[]
         {
-            ("A", "Master volume", $"{(int)Math.Round(_settings.MasterVolume * 100)}%"),
-            ("C", "Color-vision palette", SplitPascalCase(_settings.ColorMode.ToString())),
-            ("F", "Reduced flashes", _settings.ReduceFlashes ? "ON" : "OFF"),
-            ("U", "Tactical cue captions", _settings.Subtitles ? "ON" : "OFF"),
-            ("D", "Controller deadzone", $"{_settings.GamepadDeadzone:0.00}")
+            ("A", "Master volume", $"{(int)Math.Round(_settings.MasterVolume * 100)}%",
+                new(MouseActionKind.AdjustVolume)),
+            ("C", "Color-vision palette", SplitPascalCase(_settings.ColorMode.ToString()),
+                new(MouseActionKind.CycleColorMode)),
+            ("F", "Reduced flashes", _settings.ReduceFlashes ? "ON" : "OFF",
+                new(MouseActionKind.ToggleFlashes)),
+            ("U", "Tactical cue captions", _settings.Subtitles ? "ON" : "OFF",
+                new(MouseActionKind.ToggleSubtitles)),
+            ("D", "Controller deadzone", $"{_settings.GamepadDeadzone:0.00}",
+                new(MouseActionKind.AdjustDeadzone))
         };
         var y = 290;
-        foreach (var (key, name, value) in rows)
+        foreach (var (key, name, value, action) in rows)
         {
-            DrawPanel(new(470, y - 33, 660, 72));
+            DrawMouseButton(new(470, y - 33, 660, 72), string.Empty, action,
+                description: $"Change {name.ToLowerInvariant()}");
             DrawLabel(key, new(505, y + 8), 17, Cyan);
             DrawLabel(name, new(555, y + 7), 16, Colors.White);
             DrawLabel(value.ToUpperInvariant(), new(1000, y + 7), 14, new Color("ffd065"),
                 HorizontalAlignment.Right, 100);
             y += 86;
         }
-        DrawCenteredLabel("K  Keyboard controls     •     PAD Y  Controller buttons",
-            800, 684, 14, new Color("ffd065"), 700);
+        DrawMouseButton(new(500, 661, 285, 44), "KEYBOARD CONTROLS", new(MouseActionKind.OpenBindings),
+            accent: new Color("ffd065"));
+        DrawMouseButton(new(815, 661, 285, 44), "BACK TO MENU", new(MouseActionKind.OpenMenu));
         DrawCenteredLabel($"Controller: stick/D-pad plot • {GamepadButtonLabel(GamepadActionIds.Fire)} attack • " +
                   $"{GamepadButtonLabel(GamepadActionIds.Ability)} ability • " +
                   $"{GamepadButtonLabel(GamepadActionIds.EndTurn)} commit turn",
             800, 716, 13, new Color("9bc9dc"), 700);
-        DrawCenteredLabel("F10 or Esc to close", 800, 750, 13, new Color("87b5ca"), 700);
+        DrawCenteredLabel("Click any setting to cycle it • changes save immediately", 800, 750, 13,
+            new Color("87b5ca"), 700);
     }
 
     private void DrawBindings()
@@ -3273,9 +3753,10 @@ public sealed partial class Main : Node2D
             var x = 315 + column * 500;
             var y = firstRowY + row * rowSpacing;
             var selected = index == _bindingSelection;
-            if (selected)
-                DrawRect(new(x - 16, y - (_bindingDeviceGamepad ? 36 : 29), 455,
-                    _bindingDeviceGamepad ? 62 : 48), new Color(0.12f, 0.58f, 0.72f, 0.2f));
+            DrawMouseButton(new(x - 16, y - (_bindingDeviceGamepad ? 36 : 29), 455,
+                    _bindingDeviceGamepad ? 62 : 48), string.Empty,
+                new(MouseActionKind.SelectBinding, index), selected: selected,
+                description: $"Rebind {action.Label}");
             DrawLabel(action.Label.ToUpperInvariant(), new(x, y), 14,
                 selected ? Colors.White : new Color("b8d5e2"));
             var binding = _bindingDeviceGamepad
@@ -3303,8 +3784,13 @@ public sealed partial class Main : Node2D
                     : "↑/↓ choose  •  Enter rebind  •  Backspace default  •  R reset all",
                 800, 705, 14, new Color("ffd065"), 920);
         }
-        DrawCenteredLabel(_bindingDeviceGamepad ? "B / BACK returns to settings" : "K or Esc returns to settings",
-            800, 772, 13, new Color("87b5ca"), 900);
+        DrawMouseButton(new(315, 752, 205, 44), _bindingDeviceGamepad ? "KEYBOARD" : "CONTROLLER",
+            new(MouseActionKind.ToggleBindingDevice));
+        DrawMouseButton(new(540, 752, 205, 44), "RESTORE SELECTED", new(MouseActionKind.RestoreBinding),
+            accent: new Color("ffd065"));
+        DrawMouseButton(new(765, 752, 205, 44), "RESET ALL", new(MouseActionKind.ResetBindings),
+            accent: Red);
+        DrawMouseButton(new(990, 752, 205, 44), "BACK", new(MouseActionKind.BackToSettings));
     }
 
     private void DrawSetupRow(float y, string title, bool ready, string detail)
@@ -3375,6 +3861,40 @@ public sealed partial class Main : Node2D
             rect.Position + new Vector2(rect.Size.X - 12, rect.Size.Y - 1),
             new Color(0.25f, 0.45f, 0.58f, 0.08f), 1);
     }
+
+    private void DrawMouseButton(Rect2 rect, string label, MouseAction action, bool enabled = true,
+        bool selected = false, Color? accent = null, string description = "")
+    {
+        var color = accent ?? Cyan;
+        var hovered = enabled && rect.HasPoint(_mousePosition);
+        DrawStyleBox(new StyleBoxFlat
+        {
+            BgColor = !enabled
+                ? new Color(0.025f, 0.045f, 0.06f, 0.82f)
+                : selected
+                    ? new Color(color, 0.25f)
+                    : hovered
+                        ? new Color(color, 0.18f)
+                        : new Color(0.018f, 0.075f, 0.12f, 0.94f),
+            BorderColor = !enabled
+                ? new Color("40505a")
+                : selected || hovered ? color : new Color(color, 0.48f),
+            BorderWidthLeft = selected || hovered ? 2 : 1,
+            BorderWidthTop = selected || hovered ? 2 : 1,
+            BorderWidthRight = selected || hovered ? 2 : 1,
+            BorderWidthBottom = selected || hovered ? 2 : 1,
+            CornerRadiusTopLeft = 8,
+            CornerRadiusTopRight = 8,
+            CornerRadiusBottomLeft = 8,
+            CornerRadiusBottomRight = 8
+        }, rect);
+        DrawCenteredLabel(label, rect.GetCenter().X, rect.GetCenter().Y + 5, 12,
+            enabled ? selected ? Colors.White : color : new Color("63727a"), rect.Size.X - 10);
+        _mouseTargets.Add(new(rect, action, enabled, description));
+    }
+
+    private void RegisterMouseTarget(Rect2 rect, MouseAction action, bool enabled, string description) =>
+        _mouseTargets.Add(new(rect, action, enabled, description));
 
     private void DrawLabel(string text, Vector2 position, int size, Color color,
         HorizontalAlignment alignment = HorizontalAlignment.Left, float width = -1)

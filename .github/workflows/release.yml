@@ -205,7 +205,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="v0.3.0-alpha"
+          tag="v0.4.0-alpha"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "$tag already exists; keeping the published alpha immutable."
             exit 0
@@ -216,6 +216,6 @@ jobs:
             dist/packages/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Andromeda Fleet Command v0.3.0 Reconnection Alpha" \
+            --title "Andromeda Fleet Command v0.4.0 Mouse Command Alpha" \
             --prerelease \
-            --notes "Turn-based desktop alpha with host-authoritative match reconnection. Plan maneuvers, fleet orders, and abilities in a paused phase, then commit simultaneous deterministic combat turns in the 24-mission campaign or player-hosted multiplayer. A dropped guest can rejoin from the same machine and recover their reserved seat, fleet, team, and current checksummed turn. The Linux archive contains the executable, self-contained .NET/Godot runtime, bundled whisper.cpp voice runtime, licenses, and README. Linux single-player, packaged co-op, packaged versus, packaged disconnect/rejoin, and Windows startup smoke tests passed before publication."
+            --notes "Mouse-first turn-based desktop alpha. Click allied ships on the battlefield or fleet list, see the selected ship consistently highlighted, and use the persistent action bar for maneuvers, attacks, abilities, typed orders, and turn commitment. Every launch opens Captain's Drill; its ONE ACTION NOW toast remains visible until the exact requested action is completed, and Tutorial is always available from the command menu. Campaign, settings, local AI, controls, victory/defeat, and direct-IP multiplayer screens now expose visible clickable options. Host-authoritative multiplayer reconnection remains included. The Linux and Windows archives contain the executable, self-contained .NET/Godot runtime, bundled whisper.cpp voice runtime, licenses, and README. Linux single-player, packaged co-op, packaged versus, packaged disconnect/rejoin, and Windows startup smoke tests passed before publication."

@@ -625,7 +625,12 @@ static void TutorialAdvancesInOrder()
             !string.IsNullOrWhiteSpace(step.ControllerPrompt) &&
             !string.IsNullOrWhiteSpace(step.Purpose)),
         "Every tutorial beat explains action and purpose for both input modes");
+    var initialPrompt = tutorial.GetPrompt(false);
     True(!tutorial.Notify(TutorialAction.IssueOrder), "Cannot skip switch-ship step");
+    Equal(TutorialAction.SwitchShip, tutorial.CurrentStep!.Action,
+        "Wrong actions leave the exact current tutorial instruction selected");
+    Equal(initialPrompt, tutorial.GetPrompt(false),
+        "Tutorial instruction remains unchanged until its requested action is completed");
     True(tutorial.Notify(TutorialAction.SwitchShip), "Switch step advances");
     Near(0.2, tutorial.Progress, 1e-9, "Tutorial exposes progress");
     True(!tutorial.Notify(TutorialAction.IssueOrder), "Cannot skip maneuver step");
