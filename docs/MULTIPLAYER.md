@@ -22,6 +22,11 @@ dedicated server process: the captain who hosts is both a player and the authori
 6. During a completed match, the host can press **R** for a synchronized rematch. Press **F6**, then **D**
    to disconnect.
 
+If a guest loses their connection during a match, their seat remains reserved. On the same computer, reopen the
+multiplayer panel, enter the host address, and press **J**. The host restores that captain's display name, team,
+ship assignments, and latest authoritative turn. Until they return, deterministic pilots continue their ships'
+standing orders. An ordinary new join cannot claim the reserved seat; recovery requires that installation's token.
+
 For LAN play, use the host's private address, commonly beginning with `192.168.` or `10.`. For Internet play,
 the host normally needs to forward UDP 7777 through their router and firewall and give clients the public IP.
 The current direct ENet protocol is not an encrypted chat or identity service; never transmit secrets through it.
@@ -38,15 +43,18 @@ damage, cooldowns, victory state, or other authoritative game values. The host:
 5. sends a complete revisioned, checksummed recovery snapshot.
 
 Clients replace their local render state from those snapshots. No network traffic is required while captains think.
-Disconnecting discards that captain's uncommitted actions, so standing deterministic orders remain safe.
+Disconnecting discards that captain's uncommitted actions, so standing deterministic orders remain safe. Each
+installation stores a random reconnect identity in the Godot user-data directory; it is used only to reclaim the
+same reserved seat from the same running host and is never treated as a Steam or account identity.
 
 ## Current limitations
 
 - Direct IP/LAN discovery only; there is no lobby browser, NAT traversal, UPnP, or relay yet.
 - The host cannot migrate during a match.
-- Rejoining a match in progress is not implemented.
+- A guest can rejoin only while the original host process and match are still running; reconnect identity does not
+  survive host migration or a host restart.
 - Steam lobbies, invitations, authentication, and relay transport are still planned behind a transport adapter.
 - Internet-facing adversarial and high-latency soak testing remains release work.
 
 The pure multiplayer core is engine-independent and covered by the executable test suite. Live two-process ENet
-smoke tests run in the desktop CI/export environment.
+co-op/PvP smoke tests and a three-process disconnect/rejoin test run in the desktop CI/export environment.

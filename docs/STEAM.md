@@ -40,5 +40,6 @@ The playable direct-IP ENet multiplayer mode lets one player's machine host an
 authoritative co-op or PvP match. It validates ownership, duplicate sequences,
 tick windows, payload and queue limits, and recovers clients with complete
 checksummed snapshots. Steam lobbies, invitations, relay hosting, host
-migration, reconnection, and adversarial Internet soak testing remain separate
-release work. The direct transport is documented in [MULTIPLAYER.md](MULTIPLAYER.md).
+migration, and adversarial Internet soak testing remain separate release work.
+Same-host guest reconnection is implemented in the direct transport and documented in
+[MULTIPLAYER.md](MULTIPLAYER.md).

@@ -118,6 +118,10 @@ public sealed partial class Main : Node2D
     private bool _multiplayerSmokePassed;
     private bool _multiplayerSmokeSnapshotSeen;
     private bool _multiplayerSmokeShutdownQueued;
+    private bool _multiplayerSmokeReconnect;
+    private bool _multiplayerSmokeGuestDropped;
+    private bool _multiplayerSmokeGuestRejoined;
+    private string _multiplayerSmokeReconnectPhase = string.Empty;
     private MultiplayerMode _multiplayerSmokeMode = MultiplayerMode.Cooperative;
 
     public override void _Ready()
@@ -125,6 +129,11 @@ public sealed partial class Main : Node2D
         var commandArguments = OS.GetCmdlineUserArgs();
         var multiplayerSmokeRole = System.Environment.GetEnvironmentVariable("AFC_MULTIPLAYER_SMOKE_ROLE");
         var multiplayerSmokeMode = System.Environment.GetEnvironmentVariable("AFC_MULTIPLAYER_SMOKE_MODE");
+        _multiplayerSmokeReconnectPhase =
+            System.Environment.GetEnvironmentVariable("AFC_MULTIPLAYER_SMOKE_RECONNECT_PHASE") ?? string.Empty;
+        _multiplayerSmokeReconnect =
+            System.Environment.GetEnvironmentVariable("AFC_MULTIPLAYER_SMOKE_RECONNECT") == "1" ||
+            !string.IsNullOrEmpty(_multiplayerSmokeReconnectPhase);
         _smokeTest = commandArguments.Contains("--smoke-test", StringComparer.Ordinal);
         _multiplayerSmokeHost = multiplayerSmokeRole?.Equals("host", StringComparison.OrdinalIgnoreCase) == true ||
                                 commandArguments.Contains("--multiplayer-smoke-host", StringComparer.Ordinal);
@@ -1052,16 +1061,37 @@ public sealed partial class Main : Node2D
 
     private void OnMultiplayerLobbyChanged(FleetLobbySnapshot lobby)
     {
-        SetStatus($"{lobby.Mode} lobby • {lobby.Players.Count}/{lobby.MaximumPlayers} captains");
+        var connectedPlayers = lobby.Players.Count(player => player.Connected);
+        SetStatus($"{lobby.Mode} lobby • {connectedPlayers}/{lobby.Players.Count} captains online");
         RefreshMultiplayerControlVisibility();
-        if (_multiplayerSmokeHost && _multiplayerSmokePassed && lobby.MatchStarted && lobby.Players.Count < 2)
+
+        if (_multiplayerSmokeHost && _multiplayerSmokeReconnect && lobby.MatchStarted)
+        {
+            var guestConnected = lobby.Players.Any(player => !player.IsHost && player.Connected);
+            if (!guestConnected && !_multiplayerSmokeGuestDropped)
+            {
+                _multiplayerSmokeGuestDropped = true;
+                GD.Print("AFC_MP_HOST_DROPPED");
+            }
+            else if (guestConnected && _multiplayerSmokeGuestDropped && !_multiplayerSmokeGuestRejoined)
+            {
+                _multiplayerSmokeGuestRejoined = true;
+                GD.Print("AFC_MP_HOST_REJOINED");
+            }
+            else if (!guestConnected && _multiplayerSmokeGuestRejoined && _multiplayerSmokePassed)
+            {
+                QueueMultiplayerSmokeShutdown();
+                return;
+            }
+        }
+        else if (_multiplayerSmokeHost && _multiplayerSmokePassed && lobby.MatchStarted && connectedPlayers < 2)
         {
             QueueMultiplayerSmokeShutdown();
             return;
         }
-        if (_multiplayerSmokeHost && !lobby.MatchStarted && lobby.Players.Count >= 2)
+        if (_multiplayerSmokeHost && !lobby.MatchStarted && connectedPlayers >= 2)
         {
-            GD.Print($"AFC_MP_HOST_JOINED players={lobby.Players.Count}");
+            GD.Print($"AFC_MP_HOST_JOINED players={connectedPlayers}");
             var result = _multiplayer!.StartMatch();
             if (!result.Accepted) throw new InvalidOperationException(result.Message);
         }
@@ -1091,7 +1121,7 @@ public sealed partial class Main : Node2D
         if (_multiplayerSmokeHost || _multiplayerSmokeClient)
         {
             GD.Print($"AFC_MP_MATCH_STARTED role={(_multiplayerSmokeHost ? "host" : "client")}");
-            AdvanceMultiplayerSmoke(start.Snapshot.ServerTurn);
+            ProcessMultiplayerSmokeSnapshot(start.Snapshot);
         }
     }
 
@@ -1100,30 +1130,41 @@ public sealed partial class Main : Node2D
         if (_multiplayer?.IsInMatch != true) return;
         _simulation.ApplyFrame(snapshot.Frame);
         EnsureLocalShipSelected();
-        if ((_multiplayerSmokeHost || _multiplayerSmokeClient) && !_multiplayerSmokePassed)
+        if (_multiplayerSmokeHost || _multiplayerSmokeClient)
+            ProcessMultiplayerSmokeSnapshot(snapshot);
+    }
+
+    private void ProcessMultiplayerSmokeSnapshot(AuthoritativeSnapshot snapshot)
+    {
+        if (_multiplayerSmokePassed) return;
+        if (!_multiplayerSmokeSnapshotSeen)
         {
-            if (!_multiplayerSmokeSnapshotSeen)
-            {
-                _multiplayerSmokeSnapshotSeen = true;
-                GD.Print($"AFC_MP_SNAPSHOT role={(_multiplayerSmokeHost ? "host" : "client")}" +
-                         $" turn={snapshot.ServerTurn}");
-            }
-            var checksum = SimulationChecksum.Compute(_simulation);
-            if (!checksum.Equals(snapshot.Checksum, StringComparison.Ordinal))
-                throw new InvalidOperationException("Multiplayer snapshot checksum did not recover the client state");
-            if (snapshot.ServerTurn >= 4)
-            {
-                _multiplayerSmokePassed = true;
-                var role = _multiplayerSmokeHost ? "HOST" : "CLIENT";
-                GD.Print($"AFC_MP_{role}_PASS mode={_multiplayerSmokeMode}" +
-                         $" turn={snapshot.ServerTurn} ships={_multiplayer!.LocalShipIds.Count}");
-                if (_multiplayerSmokeHost) return;
-                QueueMultiplayerSmokeShutdown();
-            }
-            else
-            {
-                AdvanceMultiplayerSmoke(snapshot.ServerTurn);
-            }
+            _multiplayerSmokeSnapshotSeen = true;
+            GD.Print($"AFC_MP_SNAPSHOT role={(_multiplayerSmokeHost ? "host" : "client")}" +
+                     $" turn={snapshot.ServerTurn}");
+        }
+        var checksum = SimulationChecksum.Compute(_simulation);
+        if (!checksum.Equals(snapshot.Checksum, StringComparison.Ordinal))
+            throw new InvalidOperationException("Multiplayer snapshot checksum did not recover the client state");
+        if (_multiplayerSmokeClient &&
+            _multiplayerSmokeReconnectPhase.Equals("disconnect", StringComparison.OrdinalIgnoreCase) &&
+            snapshot.ServerTurn >= 2)
+        {
+            _multiplayerSmokePassed = true;
+            GD.Print($"AFC_MP_CLIENT_DISCONNECTED turn={snapshot.ServerTurn}");
+            QueueMultiplayerSmokeShutdown();
+        }
+        else if (snapshot.ServerTurn >= 4)
+        {
+            _multiplayerSmokePassed = true;
+            var role = _multiplayerSmokeHost ? "HOST" : "CLIENT";
+            GD.Print($"AFC_MP_{role}_PASS mode={_multiplayerSmokeMode}" +
+                     $" turn={snapshot.ServerTurn} ships={_multiplayer!.LocalShipIds.Count}");
+            if (!_multiplayerSmokeHost) QueueMultiplayerSmokeShutdown();
+        }
+        else
+        {
+            AdvanceMultiplayerSmoke(snapshot.ServerTurn);
         }
     }
 
@@ -2944,7 +2985,8 @@ public sealed partial class Main : Node2D
         DrawCenteredLabel($"{lobby.Mode.ToString().ToUpperInvariant()}  •  {mission.Title.ToUpperInvariant()}",
             800, 232, 21, lobby.Mode == MultiplayerMode.Cooperative ? new Color("48eba9") : new Color("ffd065"),
             740);
-        DrawCenteredLabel($"{lobby.Players.Count}/{lobby.MaximumPlayers} CAPTAINS  •  " +
+        var connectedPlayers = lobby.Players.Count(player => player.Connected);
+        DrawCenteredLabel($"{connectedPlayers}/{lobby.Players.Count} ONLINE  •  {lobby.Players.Count}/{lobby.MaximumPlayers} SEATS  •  " +
                           (_multiplayer.IsHost ? $"HOSTING UDP {_multiplayer.Port}" : "CONNECTED TO HOST"),
             800, 261, 12, new Color("9bc9dc"), 740);
 
@@ -2953,11 +2995,13 @@ public sealed partial class Main : Node2D
             var player = lobby.Players[index];
             var y = 320 + index * 82;
             var teamColor = player.Team == Team.Player ? Cyan : Red;
+            if (!player.Connected) teamColor = new Color(teamColor, 0.45f);
             var local = player.PlayerId.Equals(_multiplayer.LocalPlayerId, StringComparison.Ordinal);
             DrawPanel(new(455, y - 34, 690, 66));
             DrawLabel(local ? "YOU" : $"P{index + 1}", new(480, y + 5), 12, teamColor);
-            DrawLabel((player.DisplayName + (player.IsHost ? "  ◆ HOST" : string.Empty)).ToUpperInvariant(),
-                new(535, y - 5), 15, Colors.White);
+            var playerStatus = player.IsHost ? "  ◆ HOST" : player.Connected ? string.Empty : "  • RECONNECTING";
+            DrawLabel((player.DisplayName + playerStatus).ToUpperInvariant(), new(535, y - 5), 15,
+                player.Connected ? Colors.White : new Color("789bac"));
             var shipNames = player.ShipIds.Select(id => mission.Ships.FirstOrDefault(ship => ship.Id == id)?.Name ?? id);
             DrawLabel(ClipText(string.Join(" • ", shipNames), 65).ToUpperInvariant(), new(535, y + 19), 11,
                 new Color(teamColor, 0.84f));
@@ -2974,7 +3018,7 @@ public sealed partial class Main : Node2D
             return;
         }
 
-        var canStart = lobby.Players.All(player => player.ShipIds.Count > 0) &&
+        var canStart = lobby.Players.All(player => player.Connected && player.ShipIds.Count > 0) &&
                        (lobby.Mode == MultiplayerMode.Cooperative ||
                         lobby.Players.Any(player => player.Team == Team.Player) &&
                         lobby.Players.Any(player => player.Team == Team.Enemy));

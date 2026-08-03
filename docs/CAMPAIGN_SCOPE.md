@@ -39,7 +39,7 @@ long-term Steam goals from being mixed together in campaign copy.
 ## Steam-alpha or stretch work, not a current demo promise
 
 - Steam lobbies, invitations, relay transport, cloud synchronization, and Workshop
-- Host migration, match reconnection, and adversarial Internet soak testing
+- Host migration and adversarial Internet soak testing beyond the implemented same-host guest reconnection
 - Ultrawide and localized-subtitle validation
 - Steam Deck verification and public playtest infrastructure
 

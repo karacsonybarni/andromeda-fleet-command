@@ -114,6 +114,8 @@ jobs:
             "$packaged_dir/AndromedaFleetCommand.x86_64" exported cooperative
           ./scripts/multiplayer-smoke.sh \
             "$packaged_dir/AndromedaFleetCommand.x86_64" exported versus
+          ./scripts/multiplayer-smoke.sh \
+            "$packaged_dir/AndromedaFleetCommand.x86_64" exported cooperative reconnect
       - uses: actions/upload-artifact@v4
         with:
           name: AndromedaFleetCommand-${{ github.run_id }}
@@ -203,7 +205,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="v0.2.1-alpha"
+          tag="v0.3.0-alpha"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "$tag already exists; keeping the published alpha immutable."
             exit 0
@@ -214,6 +216,6 @@ jobs:
             dist/packages/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Andromeda Fleet Command v0.2.1 Turn-Based Alpha" \
+            --title "Andromeda Fleet Command v0.3.0 Reconnection Alpha" \
             --prerelease \
-            --notes "Turn-based desktop alpha. Plan maneuvers, fleet orders, and abilities in a paused phase, then commit simultaneous deterministic combat turns in the 24-mission campaign or player-hosted multiplayer. The Linux archive contains the executable, self-contained .NET/Godot runtime, bundled whisper.cpp voice runtime, licenses, and README. Linux single-player, packaged co-op, packaged versus, and Windows startup smoke tests passed before publication."
+            --notes "Turn-based desktop alpha with host-authoritative match reconnection. Plan maneuvers, fleet orders, and abilities in a paused phase, then commit simultaneous deterministic combat turns in the 24-mission campaign or player-hosted multiplayer. A dropped guest can rejoin from the same machine and recover their reserved seat, fleet, team, and current checksummed turn. The Linux archive contains the executable, self-contained .NET/Godot runtime, bundled whisper.cpp voice runtime, licenses, and README. Linux single-player, packaged co-op, packaged versus, packaged disconnect/rejoin, and Windows startup smoke tests passed before publication."

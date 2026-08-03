@@ -16,7 +16,8 @@ public sealed record LobbyPlayerSnapshot(
     string DisplayName,
     Team Team,
     IReadOnlyList<string> ShipIds,
-    bool IsHost);
+    bool IsHost,
+    bool Connected = true);
 
 public sealed record FleetLobbySnapshot(
     MultiplayerMode Mode,
@@ -37,7 +38,7 @@ public sealed class FleetLobby
         HostPlayerId = hostPlayerId;
         Mode = mode;
         MissionId = mode == MultiplayerMode.Versus ? MissionId.FleetDuel : MissionId.BlackSun;
-        _players.Add(new(hostPlayerId, NormalizeName(hostDisplayName), Team.Player, []));
+        _players.Add(new(hostPlayerId, NormalizeName(hostDisplayName), Team.Player, [], true));
         RebalanceAssignments();
     }
 
@@ -45,7 +46,8 @@ public sealed class FleetLobby
     public MultiplayerMode Mode { get; private set; }
     public MissionId MissionId { get; private set; }
     public bool MatchStarted { get; private set; }
-    public bool IsStartable => _players.All(player => player.ShipIds.Count > 0) && (Mode == MultiplayerMode.Cooperative
+    public bool IsStartable => _players.All(player => player.Connected && player.ShipIds.Count > 0) &&
+        (Mode == MultiplayerMode.Cooperative
         ? _players.Count > 0
         : _players.Count >= 2 && _players.Any(player => player.Team == Team.Player) &&
           _players.Any(player => player.Team == Team.Enemy));
@@ -60,7 +62,7 @@ public sealed class FleetLobby
         if (Mode == MultiplayerMode.Cooperative && _players.Count >=
             MissionCatalog.Get(MissionId).Ships.Count(ship => ship.Team == Team.Player))
             return new(false, "The selected mission has no unassigned allied ships");
-        _players.Add(new(playerId, NormalizeName(displayName), Team.Player, []));
+        _players.Add(new(playerId, NormalizeName(displayName), Team.Player, [], true));
         RebalanceAssignments();
         return new(true, "Player joined");
     }
@@ -73,6 +75,36 @@ public sealed class FleetLobby
         if (removed == 0) return new(false, "Unknown player");
         if (!MatchStarted) RebalanceAssignments();
         return new(true, "Player left");
+    }
+
+    public LobbyActionResult MarkDisconnected(string playerId)
+    {
+        if (!MatchStarted) return RemovePlayer(playerId);
+        if (playerId.Equals(HostPlayerId, StringComparison.Ordinal))
+            return new(false, "The host cannot disconnect without ending the match");
+        var index = _players.FindIndex(player => player.PlayerId.Equals(playerId, StringComparison.Ordinal));
+        if (index < 0) return new(false, "Unknown player");
+        if (!_players[index].Connected) return new(false, "Player is already disconnected");
+        _players[index] = _players[index] with { Connected = false };
+        return new(true, "Player disconnected; seat reserved for reconnection");
+    }
+
+    public LobbyActionResult ReconnectPlayer(string previousPlayerId, string newPlayerId)
+    {
+        if (!MatchStarted) return new(false, "The match has not started");
+        if (string.IsNullOrWhiteSpace(newPlayerId)) return new(false, "Player ID is required");
+        if (_players.Any(player =>
+                !player.PlayerId.Equals(previousPlayerId, StringComparison.Ordinal) &&
+                player.PlayerId.Equals(newPlayerId, StringComparison.Ordinal)))
+            return new(false, "Player already joined");
+        var index = _players.FindIndex(player =>
+            player.PlayerId.Equals(previousPlayerId, StringComparison.Ordinal));
+        if (index < 0) return new(false, "Reserved seat was not found");
+        if (_players[index].Connected) return new(false, "That captain is still connected");
+        if (_players[index].PlayerId.Equals(HostPlayerId, StringComparison.Ordinal))
+            return new(false, "The host cannot reconnect as a client");
+        _players[index] = _players[index] with { PlayerId = newPlayerId, Connected = true };
+        return new(true, "Captain reconnected");
     }
 
     public LobbyActionResult SetMode(MultiplayerMode mode)
@@ -121,12 +153,13 @@ public sealed class FleetLobby
             player.DisplayName,
             player.Team,
             player.ShipIds.ToArray(),
-            player.PlayerId.Equals(HostPlayerId, StringComparison.Ordinal))).ToArray());
+            player.PlayerId.Equals(HostPlayerId, StringComparison.Ordinal),
+            player.Connected)).ToArray());
 
     private AuthoritativeFleetSession CreateSession()
     {
         var session = new AuthoritativeFleetSession(MissionId, MissionCatalog.Get(MissionId).Seed);
-        foreach (var player in _players)
+        foreach (var player in _players.Where(player => player.Connected))
             session.AssignPlayer(player.PlayerId, player.ShipIds.ToArray());
         return session;
     }
@@ -169,5 +202,6 @@ public sealed class FleetLobby
         string PlayerId,
         string DisplayName,
         Team Team,
-        IReadOnlyList<string> ShipIds);
+        IReadOnlyList<string> ShipIds,
+        bool Connected);
 }
