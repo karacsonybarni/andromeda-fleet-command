@@ -507,7 +507,7 @@ public static class MissionCatalog
         if (encounter == Encounter.CarrierHunt) ships.Add(Enemy("enemy-carrier-2", "Enemy Carrier Two",
             ShipClass.Carrier, 1380, 675));
         var bombers = encounter == Encounter.BomberDefence
-            ? 4
+            ? 3
             : encounter == Encounter.DestroyerBreak ? 0 : level >= 5 ? 3 : 2;
         var escorts = encounter == Encounter.DestroyerBreak ? 0 : level >= 3 ? 2 : 1;
         if (encounter == Encounter.DestroyerBreak && level >= 6) destroyers++;
@@ -555,11 +555,8 @@ public static class MissionCatalog
         foreach (var ship in ships.Where(ship => ship.Team == Team.Enemy && ship.Class == ShipClass.Destroyer))
             orders.Add(new(ship.Id, OrderType.Attack,
                 destroyerTargets[destroyerIndex++ % destroyerTargets.Length]));
-        var bomberTargets = new[]
-        {
-            protectedShipId,
-            protectedShipId == "player-carrier" ? "player-flagship" : "player-carrier"
-        };
+        var bomberTargets = new[] { protectedShipId,
+            protectedShipId == "player-carrier" ? "player-flagship" : "player-carrier" };
         var bomberIndex = 0;
         foreach (var ship in ships.Where(ship => ship.Team == Team.Enemy && ship.Class == ShipClass.Bomber))
             orders.Add(new(ship.Id, OrderType.Attack,

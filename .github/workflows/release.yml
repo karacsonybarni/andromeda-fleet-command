@@ -193,13 +193,13 @@ jobs:
           sha256sum -c SHA256SUMS.txt
           tar -tzf AndromedaFleetCommand-Linux-x64.tar.gz > /tmp/linux-package-contents.txt
           grep -Fxq './AndromedaFleetCommand.x86_64' /tmp/linux-package-contents.txt
-      - name: Publish first playable alpha
+      - name: Publish turn-based playable alpha
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          tag="v0.1.0-alpha"
+          tag="v0.2.0-alpha"
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             echo "$tag already exists; keeping the published alpha immutable."
             exit 0
@@ -210,6 +210,6 @@ jobs:
             dist/packages/SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --target "$GITHUB_SHA" \
-            --title "Andromeda Fleet Command v0.1.0 Alpha" \
+            --title "Andromeda Fleet Command v0.2.0 Turn-Based Alpha" \
             --prerelease \
-            --notes "First playable desktop alpha. The Linux archive contains the executable, self-contained .NET/Godot runtime, bundled whisper.cpp voice runtime, licenses, and README. Both Linux and Windows packages passed native launch smoke tests before publication."
+            --notes "Turn-based desktop alpha. Plan maneuvers, fleet orders, and abilities in a paused phase, then commit simultaneous deterministic combat turns in the 24-mission campaign or player-hosted multiplayer. The Linux archive contains the executable, self-contained .NET/Godot runtime, bundled whisper.cpp voice runtime, licenses, and README. Both Linux and Windows packages passed native launch smoke tests before publication."

@@ -28,16 +28,17 @@ The current direct ENet protocol is not an encrypted chat or identity service; n
 
 ## Authority model
 
-Clients send manual-control frames, ability requests, and bounded fleet orders. They never send positions,
+Clients send plotted maneuvers, ability requests, bounded fleet orders, and a ready signal. They never send positions,
 damage, cooldowns, victory state, or other authoritative game values. The host:
 
 1. maps the network peer ID to its assigned ships;
-2. validates ownership, tick windows, duplicate sequences, queue limits, order types, and payload size;
-3. advances the deterministic simulation at 60 Hz; and
-4. sends complete checksummed recovery snapshots at 30 Hz.
+2. validates ownership, turn number, duplicate sequences, queue limits, order types, and payload size;
+3. waits until every connected captain has committed the current plan;
+4. resolves one deterministic simultaneous turn; and
+5. sends a complete revisioned, checksummed recovery snapshot.
 
-Clients replace their local render state from those snapshots. Disconnecting releases the player's assignments,
-so the existing deterministic pilot resumes every abandoned ship without stopping the match.
+Clients replace their local render state from those snapshots. No network traffic is required while captains think.
+Disconnecting discards that captain's uncommitted actions, so standing deterministic orders remain safe.
 
 ## Current limitations
 

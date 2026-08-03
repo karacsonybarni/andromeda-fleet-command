@@ -7,12 +7,14 @@ public sealed class BattleSimulation
 {
     public const double WorldWidth = 1600;
     public const double WorldHeight = 900;
-    public const double FixedStep = 1.0 / 60.0;
+    public const double ResolutionStep = 1.0 / 60.0;
+    public const double ResolutionDuration = 3.0;
 
     private readonly List<Ship> _ships = [];
     private readonly List<Projectile> _projectiles = [];
     private readonly List<CombatEvent> _events = [];
     private readonly Dictionary<string, ManualInput> _manualInputs = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _plannedAbilities = new(StringComparer.Ordinal);
     private string _selectedShipId = "player-flagship";
     private MissionDefinition _mission;
     private int _objectiveTotal;
@@ -37,6 +39,12 @@ public sealed class BattleSimulation
     public IReadOnlyList<Projectile> Projectiles => _projectiles;
     public IReadOnlyList<CombatEvent> Events => _events;
     public BattleStatus Status { get; private set; }
+    public int TurnNumber { get; private set; }
+    public TurnPhase Phase { get; private set; }
+    public double ResolutionSecondsRemaining { get; private set; }
+    public bool CanPlan => Status == BattleStatus.Active && Phase == TurnPhase.Planning;
+    public int PlannedManeuverCount => _manualInputs.Count;
+    public int PlannedAbilityCount => _plannedAbilities.Count;
     public double ElapsedSeconds { get; private set; }
     public double InitialPlayerStrength { get; private set; }
     public double InitialEnemyStrength { get; private set; }
@@ -52,14 +60,17 @@ public sealed class BattleSimulation
         _projectiles.Clear();
         _events.Clear();
         _manualInputs.Clear();
+        _plannedAbilities.Clear();
         ElapsedSeconds = 0;
         Status = BattleStatus.Active;
+        TurnNumber = 1;
+        Phase = TurnPhase.Planning;
+        ResolutionSecondsRemaining = 0;
 
         foreach (var spawn in _mission.Ships)
             _ships.Add(new(spawn.Id, spawn.Name, spawn.Class, spawn.Team, spawn.Position, spawn.Angle));
 
         _selectedShipId = _ships.First(ship => ship.Team == Team.Player).Id;
-        SelectedShip.IsManuallyControlled = true;
         foreach (var order in _mission.InitialOrders)
         {
             if (FindShip(order.ShipId) is { } ship)
@@ -68,7 +79,7 @@ public sealed class BattleSimulation
         _objectiveTotal = CountObjectiveTargets();
         InitialPlayerStrength = FleetStrength(Team.Player);
         InitialEnemyStrength = FleetStrength(Team.Enemy);
-        AddOrderEvent($"Mission joined: {_mission.Title}.");
+        AddOrderEvent($"Turn 1 planning: {_mission.Title}.");
     }
 
     public void LoadMission(MissionId missionId)
@@ -100,11 +111,24 @@ public sealed class BattleSimulation
         }
     }
 
-    public void Update(double delta)
+    public bool BeginTurnResolution()
     {
-        if (Status != BattleStatus.Active || delta <= 0) return;
+        if (!CanPlan) return false;
+        foreach (var shipId in _plannedAbilities.OrderBy(id => id, StringComparer.Ordinal))
+            ActivateAbilityNow(shipId);
+        _plannedAbilities.Clear();
+        Phase = TurnPhase.Resolving;
+        ResolutionSecondsRemaining = ResolutionDuration;
+        AddOrderEvent($"Turn {TurnNumber}: execute.");
+        return true;
+    }
+
+    public void AdvanceResolution(double delta)
+    {
+        if (Status != BattleStatus.Active || Phase != TurnPhase.Resolving || delta <= 0) return;
         var dt = Math.Min(delta, 0.05);
         ElapsedSeconds += dt;
+        ResolutionSecondsRemaining = Math.Max(0, ResolutionSecondsRemaining - dt);
         UpdateEvents(dt);
 
         foreach (var ship in _ships)
@@ -122,18 +146,51 @@ public sealed class BattleSimulation
         }
         UpdateProjectiles(dt);
         UpdateBattleStatus();
+        if (Status != BattleStatus.Active)
+        {
+            Phase = TurnPhase.Finished;
+            ResolutionSecondsRemaining = 0;
+            ClearManualInputs();
+        }
+        else if (ResolutionSecondsRemaining <= 1e-9)
+        {
+            ClearManualInputs();
+            TurnNumber++;
+            Phase = TurnPhase.Planning;
+            AddOrderEvent($"Turn {TurnNumber}: plan orders.");
+        }
     }
 
-    public void SetManualInput(ManualInput input)
+    public bool ResolveTurn()
     {
-        SetManualInput(_selectedShipId, input);
+        if (!BeginTurnResolution()) return false;
+        var safety = 0;
+        while (Phase == TurnPhase.Resolving && safety++ < 1000)
+            AdvanceResolution(Math.Min(ResolutionStep, ResolutionSecondsRemaining));
+        if (safety >= 1000) throw new InvalidOperationException("Turn resolution exceeded its deterministic step budget");
+        return true;
     }
 
-    public void SetManualInput(string shipId, ManualInput input)
+    public bool PlanManeuver(ManualInput input)
     {
-        if (FindShip(shipId) is not { IsAlive: true } ship) return;
+        return PlanManeuver(_selectedShipId, input);
+    }
+
+    public bool PlanManeuver(string shipId, ManualInput input)
+    {
+        if (!CanPlan || FindShip(shipId) is not { IsAlive: true } ship) return false;
+        if (input == ManualInput.None)
+        {
+            _manualInputs.Remove(shipId);
+            ship.IsManuallyControlled = false;
+            return true;
+        }
         _manualInputs[shipId] = input;
         ship.IsManuallyControlled = true;
+        var action = input.Fire ? "weapons attack" : input.Reverse ? "reverse burn" :
+            input.TurnLeft ? "port maneuver" : input.TurnRight ? "starboard maneuver" : "full burn";
+        AddOrderEvent($"{ship.Name}: {action} plotted for turn {TurnNumber}");
+        return true;
     }
 
     public void ClearManualInputs()
@@ -145,6 +202,23 @@ public sealed class BattleSimulation
     public string TryActivateSelectedAbility() => TryActivateAbility(_selectedShipId);
 
     public string TryActivateAbility(string shipId)
+    {
+        if (!CanPlan) return "Tactical abilities can only be queued during planning";
+        var ship = FindShip(shipId);
+        if (ship is not { IsAlive: true }) return "Ship is unavailable";
+        if (ship.AbilityCooldown > 0) return $"{ship.Name} ability ready in {Math.Ceiling(ship.AbilityCooldown)}s";
+        if (_plannedAbilities.Contains(shipId)) return $"{ship.Name} ability is already queued";
+        if (ship.Class is not (ShipClass.Flagship or ShipClass.Carrier or ShipClass.Frigate or ShipClass.Destroyer))
+            return $"{ship.Name}: no tactical ability";
+        _plannedAbilities.Add(shipId);
+        var message = $"{ship.Name}: tactical ability queued for turn {TurnNumber}";
+        AddOrderEvent(message);
+        return message;
+    }
+
+    public bool IsAbilityPlanned(string shipId) => _plannedAbilities.Contains(shipId);
+
+    private string ActivateAbilityNow(string shipId)
     {
         var ship = FindShip(shipId);
         if (ship is not { IsAlive: true }) return "Ship is unavailable";
@@ -216,16 +290,17 @@ public sealed class BattleSimulation
     public void SelectShip(string shipId)
     {
         if (FindShip(shipId) is not { IsAlive: true } ship) return;
-        ClearManualInputs();
         _selectedShipId = ship.Id;
-        ship.IsManuallyControlled = true;
-        AddOrderEvent($"Manual control: {ship.Name}");
+        AddOrderEvent($"Selected: {ship.Name}");
     }
 
     public SimulationFrame CaptureFrame() => new(
         _mission.Id,
         Seed,
         Status,
+        TurnNumber,
+        Phase,
+        ResolutionSecondsRemaining,
         ElapsedSeconds,
         InitialPlayerStrength,
         InitialEnemyStrength,
@@ -301,11 +376,15 @@ public sealed class BattleSimulation
             item.RemainingLife,
             item.InitialLife)));
         Status = frame.Status;
+        TurnNumber = Math.Max(1, frame.TurnNumber);
+        Phase = frame.Status == BattleStatus.Active ? frame.Phase : TurnPhase.Finished;
+        ResolutionSecondsRemaining = Math.Max(0, frame.ResolutionSecondsRemaining);
         ElapsedSeconds = frame.ElapsedSeconds;
         InitialPlayerStrength = frame.InitialPlayerStrength;
         InitialEnemyStrength = frame.InitialEnemyStrength;
         _objectiveTotal = CountObjectiveTargets();
         _manualInputs.Clear();
+        _plannedAbilities.Clear();
         if (FindShip(_selectedShipId) is not { IsAlive: true })
             _selectedShipId = _ships.FirstOrDefault(ship => ship.IsAlive && ship.Team == Team.Player)?.Id ??
                               _ships.First(ship => ship.IsAlive).Id;

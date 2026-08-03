@@ -1,10 +1,11 @@
 # Andromeda Fleet Command
 
-> **Command every ship with your voice.**
+> **Plan every move. Command every ship.**
 
-Andromeda Fleet Command is an open-source desktop fleet-combat game intended
-for Steam. Fly any vessel directly, switch ships instantly, or give
-natural-language orders to deterministic AI pilots.
+Andromeda Fleet Command is an open-source, simultaneous-turn fleet tactics game
+intended for Steam. Planning is paused while you plot helm maneuvers, queue ship
+abilities, and give natural-language orders; committing the turn makes both fleets
+execute their plans through a deterministic three-second combat window.
 
 ![In-engine fleet battle during Mission 3: Black Sun](art/screenshots/fleet-battle.png)
 
@@ -31,8 +32,8 @@ ten-screen capture set automatically.
 
 | Captain's Drill | Campaign progression |
 | --- | --- |
-| ![In-engine Captain's Drill teaching ship switching during live combat](art/screenshots/captains-drill.png) | ![In-engine Black Sun Incident mission selector](art/screenshots/campaign-missions.png) |
-| Learn ship switching, direct control, fleet commands, and abilities while the battle is running. | The 24-mission story unlocks in order across eight acts, from first patrol to coalition-scale fleet command. |
+| ![In-engine Captain's Drill teaching the simultaneous-turn command loop](art/screenshots/captains-drill.png) | ![In-engine Black Sun Incident mission selector](art/screenshots/campaign-missions.png) |
+| Learn ship selection, plotted maneuvers, fleet orders, abilities, and turn commitment in about a minute. | The 24-mission story unlocks in order across eight acts, from first patrol to coalition-scale fleet command. |
 
 ## Current playable campaign
 
@@ -43,18 +44,18 @@ ten-screen capture set automatically.
 - Six coherent scalable vector ship classes with faction tinting, shields, and engine trails
 - Readable fleet-combat presentation with animated star depth, tactical radar sweep, target brackets,
   projectile bloom, layered shield/thruster effects, impact sparks, explosions, and restrained camera kick
-- A four-beat, controller-aware Captain's Drill that teaches the game by doing
+- A five-beat, controller-aware Captain's Drill that teaches the complete turn loop by doing
 - Mission briefings, unlocks, and persistent campaign progress
 - Automatic mission attempt, outcome, and active-time telemetry with an exportable pacing report
-- Four switchable allied ships with different handling and tactical abilities
-- Manual thrust, steering, and weapons
+- Four selectable allied ships with different handling and tactical abilities
+- Per-ship thrust, steering, and weapons maneuvers plotted during a paused planning phase
 - Natural-language typed fleet commands
 - Optional local Ollama interpretation with safe offline fallback
 - Optional local whisper.cpp push-to-talk with bundled Windows/Linux runtime
 - In-game local-AI readiness panel and model setup (L)
 - Persistent volume, color-vision, reduced-flash, caption, and controller settings
 - Persistent conflict-safe keyboard and controller-button rebinding with live HUD/tutorial prompts
-- Gamepad flight, weapons, abilities, ship switching, pause, and menu controls
+- Gamepad maneuver planning, weapons, abilities, ship switching, turn commitment, and menu controls
 - Automatic local crash reports under the Godot user-data directory
 - Deterministic input replays with final-state checksum verification
 - Built-in campaign-wide simulation benchmark and structured GitHub feedback forms
@@ -66,7 +67,7 @@ ten-screen capture set automatically.
   victory, and defeat cues (no licensed sample dependencies)
 - Original looping synth soundtrack, “Signal Across Andromeda,” generated in-engine with a melodic
   call-sign hook, evolving harmony, bass, arpeggios, and restrained electronic percussion
-- Deterministic fixed-step simulation suitable for replays and multiplayer
+- Deterministic simultaneous-turn resolution suitable for exact replays and host-authoritative multiplayer
 - Automated parser, combat, mission, persistence, determinism, command, and endurance tests
 
 ## Technology
@@ -84,8 +85,8 @@ comparison with Unity and Unreal.
 
 ### Verified desktop build
 
-Download the permanent **[Linux x64 playable alpha](https://github.com/karacsonybarni/andromeda-fleet-command/releases/download/v0.1.0-alpha/AndromedaFleetCommand-Linux-x64.tar.gz)**
-or visit the [GitHub release](https://github.com/karacsonybarni/andromeda-fleet-command/releases/tag/v0.1.0-alpha)
+Download the **[Linux x64 turn-based alpha](https://github.com/karacsonybarni/andromeda-fleet-command/releases/download/v0.2.0-alpha/AndromedaFleetCommand-Linux-x64.tar.gz)**
+or visit the [GitHub release](https://github.com/karacsonybarni/andromeda-fleet-command/releases/tag/v0.2.0-alpha)
 for Windows and SHA-256 checksum files. Both packages are launch-tested on their
 native GitHub-hosted operating systems before publication. They are unsigned
 alpha builds; a graphical Windows playtest is still required before public release.
@@ -128,10 +129,11 @@ These are the defaults. Press F10, then K for keyboard actions, or controller Ba
 then Y for controller buttons. Conflicting assignments swap and save immediately.
 
 - 1–4 or Tab: switch controlled ship
-- W / S: thrust / reverse
-- A / D: rotate
-- Space: fire
-- Q: activate the selected ship’s unique tactical ability
+- W / S: plot a forward / reverse burn for the selected ship
+- A / D: plot a turning burn
+- F: queue a weapons attack on the nearest target
+- Q: queue the selected ship’s unique tactical ability
+- Space: commit the plan and resolve the turn
 - Enter: type a natural-language order
 - V: record a local voice command when whisper.cpp is configured
 - P: pause
@@ -181,9 +183,9 @@ Press **F6** from the game, enter a captain name, then:
 - enter the host's address and press **J** to join.
 
 The host cycles all co-op missions with **Left/Right** (**1–3** remain shortcuts), toggles co-op/PvP with **M**, and starts with
-**Enter**. The host machine runs the authoritative simulation; each captain receives one or more ships,
-can fly them directly, and can issue orders to their assigned command. If a client leaves, deterministic
-pilots immediately resume those ships.
+**Enter**. The host machine resolves the authoritative turn. Each captain plans for their assigned ships and
+presses Space (controller A) when ready; both fleets execute after every connected captain commits. If a client
+leaves, its uncommitted actions are discarded and deterministic pilots retain the ships’ standing orders.
 
 LAN play works with the host's local IP. Internet play currently requires the host to forward **UDP 7777**
 and share their public IP; do not send sensitive information through the game protocol. Steam lobbies,

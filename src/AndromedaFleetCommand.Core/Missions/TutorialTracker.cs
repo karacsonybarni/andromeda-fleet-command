@@ -3,9 +3,10 @@ namespace AndromedaFleetCommand.Core.Missions;
 public enum TutorialAction
 {
     SwitchShip,
-    ManualControl,
+    PlotManeuver,
     IssueOrder,
-    ActivateAbility
+    ActivateAbility,
+    EndTurn
 }
 
 public sealed record TutorialStep(
@@ -23,10 +24,10 @@ public sealed class TutorialTracker
             "Press Tab or 1–2 to switch ships",
             "Tap LB or RB to switch ships",
             "Every allied hull is yours."),
-        new(TutorialAction.ManualControl, "Take the helm",
-            "Hold W/A/S/D to fly • Space fires",
-            "Use the left stick to fly • A fires",
-            "Direct. Instant. Responsive."),
+        new(TutorialAction.PlotManeuver, "Plot a maneuver",
+            "Press W/A/S/D or F to queue one tactical action",
+            "Use the left stick or R3 to queue one tactical action",
+            "Preview the move before anyone commits."),
         new(TutorialAction.IssueOrder, "Command the fleet",
             "Press Enter • order Frigate Two to intercept the bomber",
             "Press Enter to type, or Y when local voice is ready",
@@ -34,7 +35,11 @@ public sealed class TutorialTracker
         new(TutorialAction.ActivateAbility, "Change the battle",
             "Press Q to trigger this ship's tactical ability",
             "Press B to trigger this ship's tactical ability",
-            "Each class fights differently.")
+            "Each class fights differently."),
+        new(TutorialAction.EndTurn, "Commit the plan",
+            "Press Space to resolve the turn",
+            "Press A to resolve the turn",
+            "Both fleets execute together.")
     ];
 
     public int CompletedSteps { get; private set; }

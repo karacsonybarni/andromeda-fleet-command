@@ -18,13 +18,11 @@ public enum MultiplayerSessionState
 
 /// <summary>
 /// Owns the ENet peer and the host-authoritative multiplayer session. Clients send only intent;
-/// the host advances the simulation and distributes complete recovery snapshots.
+/// the host resolves committed turns and distributes complete recovery snapshots.
 /// </summary>
 public sealed partial class MultiplayerManager : Node
 {
     public const int DefaultPort = 7777;
-    private const int SnapshotIntervalTicks = 2;
-    private const int MaximumCatchUpSteps = 12;
     private const int MaximumClients = FleetLobby.MaximumPlayers - 1;
 
     private ENetMultiplayerPeer? _peer;
@@ -32,8 +30,6 @@ public sealed partial class MultiplayerManager : Node
     private AuthoritativeFleetSession? _hostSession;
     private string _pendingDisplayName = "Captain";
     private long _sequence;
-    private double _accumulator;
-    private BattleStatus _lastBroadcastStatus = BattleStatus.Active;
 
     public event Action<FleetLobbySnapshot>? LobbyChanged;
     public event Action<MatchStartMessage>? MatchStarted;
@@ -49,6 +45,9 @@ public sealed partial class MultiplayerManager : Node
     public bool IsInMatch => State == MultiplayerSessionState.InMatch;
     public bool IsActive => State != MultiplayerSessionState.Offline;
     public int Port { get; private set; } = DefaultPort;
+    public int CommittedTurn { get; private set; }
+    public bool IsWaitingForTurn => IsInMatch && LatestSnapshot is not null &&
+                                    CommittedTurn == LatestSnapshot.ServerTurn;
 
     public IReadOnlyList<string> LocalShipIds => Lobby?.Players
         .FirstOrDefault(player => player.PlayerId.Equals(LocalPlayerId, StringComparison.Ordinal))?.ShipIds ?? [];
@@ -74,25 +73,6 @@ public sealed partial class MultiplayerManager : Node
         Multiplayer.ConnectionFailed -= OnConnectionFailed;
         Multiplayer.ServerDisconnected -= OnServerDisconnected;
         Close(false);
-    }
-
-    public override void _Process(double delta)
-    {
-        if (!IsHost || _hostSession is null || State != MultiplayerSessionState.InMatch ||
-            _hostSession.Simulation.Status != BattleStatus.Active)
-            return;
-
-        _accumulator += Math.Min(delta, 0.2);
-        var steps = 0;
-        while (_accumulator >= BattleSimulation.FixedStep && steps++ < MaximumCatchUpSteps)
-        {
-            var snapshot = _hostSession.Step();
-            _accumulator -= BattleSimulation.FixedStep;
-            var statusChanged = snapshot.Status != _lastBroadcastStatus;
-            if (snapshot.ServerTick % SnapshotIntervalTicks == 0 || statusChanged)
-                PublishSnapshot(snapshot);
-            _lastBroadcastStatus = snapshot.Status;
-        }
     }
 
     public LobbyActionResult Host(MultiplayerMode mode, string displayName, int port = DefaultPort)
@@ -180,17 +160,24 @@ public sealed partial class MultiplayerManager : Node
     {
         if (!IsInMatch || string.IsNullOrWhiteSpace(LocalPlayerId))
             return new(false, "No multiplayer match is active");
-        var frame = new NetworkControlFrame(++_sequence, LatestSnapshot?.ServerTick ?? 0,
+        if (IsWaitingForTurn) return new(false, $"Already ready for turn {CommittedTurn}");
+        var frame = new NetworkControlFrame(++_sequence, LatestSnapshot?.ServerTurn ?? 1,
             LocalPlayerId, shipId, input, activateAbility);
-        if (IsHost && _hostSession is not null) return _hostSession.SubmitControl(frame);
+        if (IsHost && _hostSession is not null)
+        {
+            var admission = _hostSession.SubmitControl(frame);
+            if (admission.Accepted) PublishSnapshot(_hostSession.Snapshot());
+            return admission;
+        }
         RpcId(1, nameof(SubmitControlRpc), MultiplayerWire.Serialize(frame));
-        return new(true, "Control sent");
+        return new(true, activateAbility ? "Ability queued" : "Maneuver sent");
     }
 
     public CommandAdmission SendCommand(FleetCommand command, string selectedShipId, BattleSimulation simulation)
     {
         if (!IsInMatch || string.IsNullOrWhiteSpace(LocalPlayerId))
             return new(false, "No multiplayer match is active");
+        if (IsWaitingForTurn) return new(false, $"Already ready for turn {CommittedTurn}");
 
         var owned = LocalShipIds.Select(simulation.FindShip).Where(ship => ship is { IsAlive: true })
             .Cast<Ship>().ToArray();
@@ -205,7 +192,7 @@ public sealed partial class MultiplayerManager : Node
 
         foreach (var ship in subjects)
         {
-            var networkCommand = new NetworkFleetCommand(++_sequence, LatestSnapshot?.ServerTick ?? 0,
+            var networkCommand = new NetworkFleetCommand(++_sequence, LatestSnapshot?.ServerTurn ?? 1,
                 LocalPlayerId, ship.Id, command.Action, command.TargetSelector, command.Destination);
             if (IsHost && _hostSession is not null)
             {
@@ -217,9 +204,31 @@ public sealed partial class MultiplayerManager : Node
                 RpcId(1, nameof(SubmitCommandRpc), MultiplayerWire.Serialize(networkCommand));
             }
         }
+        if (IsHost && _hostSession is not null) PublishSnapshot(_hostSession.Snapshot());
         return new(true, subjects.Length == 1
-            ? $"Order relayed to {subjects[0].Name}"
-            : $"Order relayed to {subjects.Length} assigned ships");
+            ? $"Order planned for {subjects[0].Name}"
+            : $"Orders planned for {subjects.Length} assigned ships");
+    }
+
+    public TurnCommitResult CommitTurn()
+    {
+        if (!IsInMatch || string.IsNullOrWhiteSpace(LocalPlayerId))
+            return new(false, false, "No multiplayer match is active");
+        if (IsWaitingForTurn) return new(false, false, $"Already ready for turn {CommittedTurn}");
+        var commit = new NetworkTurnCommit(++_sequence, LatestSnapshot?.ServerTurn ?? 1, LocalPlayerId);
+        if (IsHost && _hostSession is not null)
+        {
+            var result = _hostSession.CommitTurn(commit);
+            if (result.Accepted)
+            {
+                CommittedTurn = commit.ClientTurn;
+                PublishSnapshot(result.Snapshot ?? _hostSession.Snapshot());
+            }
+            return result;
+        }
+        RpcId(1, nameof(CommitTurnRpc), MultiplayerWire.Serialize(commit));
+        CommittedTurn = commit.ClientTurn;
+        return new(true, false, $"Ready for turn {commit.ClientTurn}; waiting for host");
     }
 
     public void Close(bool notify = true)
@@ -237,7 +246,7 @@ public sealed partial class MultiplayerManager : Node
         Lobby = null;
         LatestSnapshot = null;
         LocalPlayerId = string.Empty;
-        _accumulator = 0;
+        CommittedTurn = 0;
         _sequence = 0;
         if (State != MultiplayerSessionState.Offline) ChangeState(MultiplayerSessionState.Offline);
         if (notify) NoticeReceived?.Invoke("Multiplayer session closed");
@@ -247,12 +256,11 @@ public sealed partial class MultiplayerManager : Node
     {
         _hostSession = session;
         if (_peer is not null) _peer.RefuseNewConnections = true;
-        _accumulator = 0;
-        _lastBroadcastStatus = BattleStatus.Active;
         var lobby = _hostLobby!.Snapshot();
         var snapshot = session.Snapshot();
         Lobby = lobby;
         LatestSnapshot = snapshot;
+        CommittedTurn = 0;
         ChangeState(MultiplayerSessionState.InMatch);
         var start = new MatchStartMessage(lobby, snapshot);
         MatchStarted?.Invoke(start);
@@ -272,6 +280,7 @@ public sealed partial class MultiplayerManager : Node
     private void PublishSnapshot(AuthoritativeSnapshot snapshot)
     {
         LatestSnapshot = snapshot;
+        if (snapshot.ServerTurn > CommittedTurn) CommittedTurn = 0;
         SnapshotReceived?.Invoke(snapshot);
         Rpc(nameof(ReceiveSnapshotRpc), MultiplayerWire.Serialize(snapshot));
     }
@@ -287,7 +296,7 @@ public sealed partial class MultiplayerManager : Node
     {
         if (!IsHost || _hostLobby is null) return;
         var playerId = peerId.ToString();
-        _hostSession?.UnassignPlayer(playerId);
+        if (_hostSession?.UnassignPlayer(playerId) == true) PublishSnapshot(_hostSession.Snapshot());
         var result = _hostLobby.RemovePlayer(playerId);
         if (result.Accepted)
         {
@@ -350,6 +359,7 @@ public sealed partial class MultiplayerManager : Node
         if (!MultiplayerWire.TryDeserialize<MatchStartMessage>(payload, out var start) || start is null) return;
         Lobby = start.Lobby;
         LatestSnapshot = start.Snapshot;
+        CommittedTurn = 0;
         ChangeState(MultiplayerSessionState.InMatch);
         MatchStarted?.Invoke(start);
     }
@@ -360,16 +370,16 @@ public sealed partial class MultiplayerManager : Node
     {
         if (!MultiplayerWire.TryDeserialize<AuthoritativeSnapshot>(payload, out var snapshot) || snapshot is null)
             return;
-        if (LatestSnapshot is not null && snapshot.ServerTick <= LatestSnapshot.ServerTick) return;
+        if (LatestSnapshot is not null && snapshot.Revision <= LatestSnapshot.Revision) return;
         LatestSnapshot = snapshot;
+        if (snapshot.ServerTurn > CommittedTurn) CommittedTurn = 0;
         SnapshotReceived?.Invoke(snapshot);
     }
 
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void ReceiveNoticeRpc(string notice) => NoticeReceived?.Invoke(notice);
 
-    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.UnreliableOrdered,
-        TransferChannel = 1)]
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
     private void SubmitControlRpc(string payload)
     {
         if (!IsHost || _hostSession is null ||
@@ -379,6 +389,7 @@ public sealed partial class MultiplayerManager : Node
         var trusted = frame with { PlayerId = sender };
         var result = _hostSession.SubmitControl(trusted);
         if (!result.Accepted) SendNotice(long.Parse(sender), result.Message);
+        else PublishSnapshot(_hostSession.Snapshot());
     }
 
     [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -391,6 +402,20 @@ public sealed partial class MultiplayerManager : Node
         var trusted = command with { PlayerId = senderId.ToString() };
         var result = _hostSession.Submit(trusted);
         if (!result.Accepted) SendNotice(senderId, result.Message);
+        else PublishSnapshot(_hostSession.Snapshot());
+    }
+
+    [Rpc(MultiplayerApi.RpcMode.AnyPeer, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
+    private void CommitTurnRpc(string payload)
+    {
+        if (!IsHost || _hostSession is null ||
+            !MultiplayerWire.TryDeserialize<NetworkTurnCommit>(payload, out var commit) || commit is null)
+            return;
+        var senderId = Multiplayer.GetRemoteSenderId();
+        var trusted = commit with { PlayerId = senderId.ToString() };
+        var result = _hostSession.CommitTurn(trusted);
+        SendNotice(senderId, result.Message);
+        if (result.Accepted) PublishSnapshot(result.Snapshot ?? _hostSession.Snapshot());
     }
 
     private void ChangeState(MultiplayerSessionState state)

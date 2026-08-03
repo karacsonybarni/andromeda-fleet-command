@@ -5,6 +5,7 @@ namespace AndromedaFleetCommand.Core.Configuration;
 public static class GamepadActionIds
 {
     public const string Fire = "fire";
+    public const string EndTurn = "end-turn";
     public const string Ability = "ability";
     public const string Voice = "voice";
     public const string Missions = "missions";
@@ -20,14 +21,15 @@ public static class GamepadActions
 {
     public static IReadOnlyList<GamepadActionDescriptor> All { get; } =
     [
-        new(GamepadActionIds.Fire, "Fire weapons", "A"),
+        new(GamepadActionIds.Fire, "Plot weapons attack", "RightStick"),
+        new(GamepadActionIds.EndTurn, "Commit / end turn", "A"),
         new(GamepadActionIds.Ability, "Tactical ability", "B"),
         new(GamepadActionIds.Voice, "Voice command", "Y"),
         new(GamepadActionIds.Missions, "Mission selection", "X"),
         new(GamepadActionIds.Pause, "Pause", "Start"),
         new(GamepadActionIds.SwitchShip, "Cycle controlled ship", "RightShoulder"),
-        new(GamepadActionIds.Restart, "Restart mission", "DpadDown"),
-        new(GamepadActionIds.NextMission, "Next mission", "DpadUp")
+        new(GamepadActionIds.Restart, "Restart mission", "LeftStick"),
+        new(GamepadActionIds.NextMission, "Next mission", "LeftShoulder")
     ];
 
     public static GamepadActionDescriptor? Find(string id) =>

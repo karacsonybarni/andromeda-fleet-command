@@ -1,6 +1,6 @@
 # Validation
 
-Last verified: 20 July 2026.
+Last verified: 3 August 2026.
 
 ## Automated core suite
 
@@ -10,33 +10,34 @@ Command:
 dotnet run --project tests/AndromedaFleetCommand.Core.Tests
 ~~~
 
-Result: **43 tests, 0 failures**.
+Result: **45 tests, 0 failures**.
 
 Coverage includes:
 
 - vector and physics invariants
 - natural-language attack, intercept, defend, move, and retreat parsing
 - safe rejection of unknown commands
-- deterministic replay-equivalent simulation
+- paused planning with explicit planning/resolution/finished phases
+- deterministic simultaneous three-second turn resolution
 - all 24 mission definitions, eight-act narrative continuity, pacing metadata, and objective outcomes
 - a complete representative 24-mission campaign playthrough through normal
-  parsed orders, manual controls, abilities, tutorial steps, and sequential unlocks
+  parsed orders, plotted maneuvers, queued abilities, tutorial steps, turn commits, and sequential unlocks
 - sequential campaign unlocks and corrupt-save recovery
 - bounded campaign pacing telemetry, corrupt-data recovery, full-coverage detection,
   duration/variance aggregation, and deterministic Markdown report export
-- concise four-beat tutorial ordering, progress, purpose text, and dual-input prompts
+- concise five-beat tutorial ordering, progress, purpose text, and dual-input prompts
 - loopback-only local-AI configuration and corrupt-settings recovery
 - GPU-preferred local inference defaults and legacy-settings migration
 - accessibility-setting normalization and corrupt-settings recovery
 - deterministic replay checksums, persistence, and corruption rejection
-- authoritative multiplayer ownership, sequencing, and deterministic snapshot validation
+- authoritative multiplayer ownership, sequencing, all-captains-ready turns, and deterministic snapshot validation
 - cooperative and PvP lobby assignment, malformed-payload rejection, disconnect
   recovery, and deterministic authoritative sessions
-- manual control and speed limits
+- planned maneuver and speed limits
 - validated command dispatch
 - tactical-ability cooldowns
 - shields, hull damage, and victory conditions
-- a 150-second maximum endurance battle
+- a multi-turn maximum endurance battle
 
 ## Godot API build
 
@@ -81,7 +82,7 @@ AFC_SMOKE_PASS ships=5 projectiles=...
 Benchmark marker from this environment:
 
 ~~~text
-AFC_BENCHMARK_PASS ticks=32400 ticks_per_second=37360
+AFC_BENCHMARK_PASS turns=2400 turns_per_second=217
 ~~~
 
 ## Release-package checks

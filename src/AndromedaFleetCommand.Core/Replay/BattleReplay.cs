@@ -11,15 +11,16 @@ namespace AndromedaFleetCommand.Core.Replay;
 
 public enum ReplayEventType
 {
-    ManualInput,
+    Maneuver,
     FleetCommand,
     SelectShip,
     CycleShip,
-    Ability
+    Ability,
+    EndTurn
 }
 
 public sealed record ReplayEvent(
-    int Tick,
+    int Turn,
     ReplayEventType Type,
     ManualInput Input,
     FleetCommand? Command = null,
@@ -30,76 +31,70 @@ public sealed record BattleReplay(
     MissionId MissionId,
     long Seed,
     IReadOnlyList<ReplayEvent> Events,
-    int FinalTick,
+    int FinalTurn,
     string ExpectedChecksum);
 
 public sealed class ReplayRecorder(MissionId missionId, long seed)
 {
     private readonly List<ReplayEvent> _events = [];
-    private ManualInput _lastInput;
-    private bool _hasInput;
 
-    public void RecordInput(int tick, ManualInput input)
+    public void RecordManeuver(int turn, ManualInput input)
     {
-        if (_hasInput && input == _lastInput) return;
-        _events.Add(new(tick, ReplayEventType.ManualInput, input));
-        _lastInput = input;
-        _hasInput = true;
+        _events.Add(new(turn, ReplayEventType.Maneuver, input));
     }
 
-    public void RecordCommand(int tick, FleetCommand command) =>
-        _events.Add(new(tick, ReplayEventType.FleetCommand, ManualInput.None, command));
+    public void RecordCommand(int turn, FleetCommand command) =>
+        _events.Add(new(turn, ReplayEventType.FleetCommand, ManualInput.None, command));
 
-    public void RecordShipSelection(int tick, int shipIndex) =>
-        _events.Add(new(tick, ReplayEventType.SelectShip, ManualInput.None, ShipIndex: shipIndex));
+    public void RecordShipSelection(int turn, int shipIndex) =>
+        _events.Add(new(turn, ReplayEventType.SelectShip, ManualInput.None, ShipIndex: shipIndex));
 
-    public void RecordShipCycle(int tick) =>
-        _events.Add(new(tick, ReplayEventType.CycleShip, ManualInput.None));
+    public void RecordShipCycle(int turn) =>
+        _events.Add(new(turn, ReplayEventType.CycleShip, ManualInput.None));
 
-    public void RecordAbility(int tick) =>
-        _events.Add(new(tick, ReplayEventType.Ability, ManualInput.None));
+    public void RecordAbility(int turn) =>
+        _events.Add(new(turn, ReplayEventType.Ability, ManualInput.None));
 
-    public BattleReplay Complete(int finalTick, BattleSimulation simulation) =>
-        new(1, missionId, seed, _events.ToArray(), finalTick, SimulationChecksum.Compute(simulation));
+    public void RecordEndTurn(int turn) =>
+        _events.Add(new(turn, ReplayEventType.EndTurn, ManualInput.None));
+
+    public BattleReplay Complete(int finalTurn, BattleSimulation simulation) =>
+        new(2, missionId, seed, _events.ToArray(), finalTurn, SimulationChecksum.Compute(simulation));
 }
 
 public static class ReplayRunner
 {
     public static (BattleSimulation Simulation, string Checksum) Run(BattleReplay replay)
     {
-        if (replay.FormatVersion != 1) throw new InvalidOperationException(
+        if (replay.FormatVersion != 2) throw new InvalidOperationException(
             $"Unsupported replay format {replay.FormatVersion}");
         var simulation = new BattleSimulation(replay.MissionId, replay.Seed);
         var dispatcher = new CommandDispatcher();
-        var events = replay.Events.OrderBy(item => item.Tick).ToArray();
-        var eventIndex = 0;
-        var input = ManualInput.None;
-        for (var tick = 0; tick < replay.FinalTick && simulation.Status == BattleStatus.Active; tick++)
+        var events = replay.Events.OrderBy(item => item.Turn).ToArray();
+        foreach (var item in events)
         {
-            while (eventIndex < events.Length && events[eventIndex].Tick == tick)
+            if (simulation.Status != BattleStatus.Active) break;
+            switch (item.Type)
             {
-                var item = events[eventIndex++];
-                switch (item.Type)
-                {
-                    case ReplayEventType.ManualInput:
-                        input = item.Input;
-                        break;
-                    case ReplayEventType.FleetCommand when item.Command is not null:
-                        dispatcher.Dispatch(item.Command, simulation);
-                        break;
-                    case ReplayEventType.SelectShip:
-                        simulation.SelectPlayerShip(item.ShipIndex);
-                        break;
-                    case ReplayEventType.CycleShip:
-                        simulation.CycleSelectedShip();
-                        break;
-                    case ReplayEventType.Ability:
-                        simulation.TryActivateSelectedAbility();
-                        break;
-                }
+                case ReplayEventType.Maneuver:
+                    simulation.PlanManeuver(item.Input);
+                    break;
+                case ReplayEventType.FleetCommand when item.Command is not null:
+                    dispatcher.Dispatch(item.Command, simulation);
+                    break;
+                case ReplayEventType.SelectShip:
+                    simulation.SelectPlayerShip(item.ShipIndex);
+                    break;
+                case ReplayEventType.CycleShip:
+                    simulation.CycleSelectedShip();
+                    break;
+                case ReplayEventType.Ability:
+                    simulation.TryActivateSelectedAbility();
+                    break;
+                case ReplayEventType.EndTurn:
+                    simulation.ResolveTurn();
+                    break;
             }
-            simulation.SetManualInput(input);
-            simulation.Update(BattleSimulation.FixedStep);
         }
         return (simulation, SimulationChecksum.Compute(simulation));
     }
@@ -116,6 +111,9 @@ public static class SimulationChecksum
         var text = new StringBuilder()
             .Append((int)simulation.Mission.Id).Append('|')
             .Append((int)simulation.Status).Append('|')
+            .Append(simulation.TurnNumber).Append('|')
+            .Append((int)simulation.Phase).Append('|')
+            .Append(simulation.ResolutionSecondsRemaining.ToString("R", invariant)).Append('|')
             .Append(simulation.ElapsedSeconds.ToString("R", invariant)).Append('|');
         foreach (var ship in simulation.Ships.OrderBy(ship => ship.Id, StringComparer.Ordinal))
         {
@@ -128,13 +126,23 @@ public static class SimulationChecksum
                 .Append(ship.Hull.ToString("R", invariant)).Append(',')
                 .Append(ship.Shield.ToString("R", invariant)).Append(',')
                 .Append(ship.Energy.ToString("R", invariant)).Append(',')
-                .Append((int)ship.Order.Type).Append(',').Append(ship.Order.TargetId).Append('|');
+                .Append(ship.WeaponCooldown.ToString("R", invariant)).Append(',')
+                .Append(ship.AbilityCooldown.ToString("R", invariant)).Append(',')
+                .Append(ship.OverdriveRemaining.ToString("R", invariant)).Append(',')
+                .Append((int)ship.Order.Type).Append(',').Append(ship.Order.TargetId).Append(',')
+                .Append(ship.Order.Destination?.X.ToString("R", invariant)).Append(',')
+                .Append(ship.Order.Destination?.Y.ToString("R", invariant)).Append(',')
+                .Append(ship.IsManuallyControlled).Append('|');
         }
         foreach (var projectile in simulation.Projectiles)
         {
             text.Append(projectile.SourceId).Append(':')
+                .Append((int)projectile.Team).Append(',')
+                .Append(projectile.Damage.ToString("R", invariant)).Append(',')
                 .Append(projectile.Position.X.ToString("R", invariant)).Append(',')
                 .Append(projectile.Position.Y.ToString("R", invariant)).Append(',')
+                .Append(projectile.Velocity.X.ToString("R", invariant)).Append(',')
+                .Append(projectile.Velocity.Y.ToString("R", invariant)).Append(',')
                 .Append(projectile.RemainingLife.ToString("R", invariant)).Append('|');
         }
         return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(text.ToString())));

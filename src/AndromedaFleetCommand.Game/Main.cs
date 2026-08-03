@@ -87,9 +87,9 @@ public sealed partial class Main : Node2D
     private double _audioCaptionTime;
     private BattleReplayStore? _replayStore;
     private ReplayRecorder? _replayRecorder;
-    private int _simulationTick;
     private IPlatformServices? _platform;
     private bool _lastInputWasController;
+    private bool _gamepadManeuverArmed = true;
     private double _tutorialStepFlash;
     private double _tutorialCelebrationTime;
     private double _visualTime;
@@ -112,7 +112,7 @@ public sealed partial class Main : Node2D
     private bool _wasMultiplayerMatch;
     private LineEdit? _multiplayerName;
     private LineEdit? _multiplayerAddress;
-    private double _networkControlAccumulator;
+    private int _lastMultiplayerCommittedTurn;
     private bool _multiplayerSmokeHost;
     private bool _multiplayerSmokeClient;
     private bool _multiplayerSmokePassed;
@@ -265,18 +265,11 @@ public sealed partial class Main : Node2D
             if (_statusTime <= 0) _status = string.Empty;
         }
 
-        var gameplayInputAvailable = !_paused && !_visualQaFreeze && !_showHelp && !_commandMode &&
+        var gameplayAvailable = !_paused && !_visualQaFreeze && !_showHelp && !_commandMode &&
             !_showSettings && !_showBindings && !_showMissionSelect && !_showLocalAiSetup && !_showMultiplayer &&
             _simulation.Status == BattleStatus.Active;
-        if (gameplayInputAvailable && _multiplayer?.IsInMatch == true)
+        if (gameplayAvailable && _multiplayer?.IsInMatch == true)
         {
-            var manualInput = ReadManualInput();
-            _networkControlAccumulator += delta;
-            if (_networkControlAccumulator >= 1.0 / 30.0)
-            {
-                _networkControlAccumulator %= 1.0 / 30.0;
-                _multiplayer.SendControl(_simulation.SelectedShip.Id, manualInput);
-            }
             ObserveCombatAudio();
             ObserveBattleStatus();
             if (_simulation.Projectiles.Count > _previousProjectileCount && _weaponAudioCooldown <= 0)
@@ -287,19 +280,15 @@ public sealed partial class Main : Node2D
             _previousProjectileCount = _simulation.Projectiles.Count;
             _accumulator = 0;
         }
-        else if (gameplayInputAvailable)
+        else if (gameplayAvailable && _simulation.Phase == TurnPhase.Resolving)
         {
-            _accumulator += Math.Min(delta, 0.2);
-            var manualInput = ReadManualInput();
-            if (manualInput != ManualInput.None) AdvanceTutorial(TutorialAction.ManualControl);
-            _replayRecorder?.RecordInput(_simulationTick, manualInput);
-            _simulation.SetManualInput(manualInput);
+            _accumulator += Math.Min(delta * 4, 0.5);
             var safety = 0;
-            while (_accumulator >= BattleSimulation.FixedStep && safety++ < 12)
+            while (_accumulator >= BattleSimulation.ResolutionStep && safety++ < 40 &&
+                   _simulation.Phase == TurnPhase.Resolving)
             {
-                _simulation.Update(BattleSimulation.FixedStep);
-                _simulationTick++;
-                _accumulator -= BattleSimulation.FixedStep;
+                _simulation.AdvanceResolution(BattleSimulation.ResolutionStep);
+                _accumulator -= BattleSimulation.ResolutionStep;
             }
             ObserveCombatAudio();
             ObserveBattleStatus();
@@ -312,14 +301,14 @@ public sealed partial class Main : Node2D
         }
         else
         {
-            if (_multiplayer?.IsInMatch != true) _simulation.SetManualInput(ManualInput.None);
             _accumulator = 0;
-            _networkControlAccumulator = 0;
         }
         QueueRedraw();
         if (_visualQa) AdvanceVisualQa();
         if (_trailerCapture) AdvanceTrailer(delta);
-        if (_smokeTest && _simulation.ElapsedSeconds >= 2)
+        if (_smokeTest && _simulation.Phase == TurnPhase.Planning && _simulation.ElapsedSeconds < 6)
+            EndTurn();
+        if (_smokeTest && _simulation.ElapsedSeconds >= 6 && _simulation.Phase != TurnPhase.Resolving)
         {
             var finite = _simulation.Ships.All(ship => ship.Position.IsFinite && ship.Velocity.IsFinite);
             if (!finite) throw new InvalidOperationException("Smoke test detected invalid simulation state");
@@ -338,17 +327,20 @@ public sealed partial class Main : Node2D
             _simulation.LoadMission(MissionId.BlackSun);
             StartReplayRecording();
             IssueTrailerCommand("All ships, attack the enemy flagship");
+            EndTurn();
         }
 
         if (_trailerStage == 0 && _trailerTime >= 2.6)
         {
             IssueTrailerCommand("All ships, attack the enemy flagship");
+            EndTurn();
             _trailerStage++;
         }
         else if (_trailerStage == 1 && _trailerTime >= 8)
         {
             SelectPlayerShip(2);
             ActivateSelectedAbility();
+            EndTurn();
             _trailerStage++;
         }
         else if (_trailerStage == 2 && _trailerTime >= 13)
@@ -356,6 +348,7 @@ public sealed partial class Main : Node2D
             SelectPlayerShip(1);
             ActivateSelectedAbility();
             IssueTrailerCommand("All ships, attack the nearest enemy");
+            EndTurn();
             _trailerStage++;
         }
         else if (_trailerStage == 3 && _trailerTime >= 18)
@@ -364,6 +357,7 @@ public sealed partial class Main : Node2D
             StartReplayRecording();
             IssueTrailerCommand("All ships, attack the enemy flagship");
             SelectPlayerShip(3);
+            EndTurn();
             _trailerStage++;
         }
         else if (_trailerStage == 4 && _trailerTime >= 25)
@@ -392,17 +386,48 @@ public sealed partial class Main : Node2D
         AddLog($"FLEET  {_lastAcknowledgement}");
     }
 
-    private ManualInput ReadManualInput()
+    private void PlanHelmAction(ManualInput input)
     {
-        var joyX = Input.GetJoyAxis(0, JoyAxis.LeftX);
-        var joyY = Input.GetJoyAxis(0, JoyAxis.LeftY);
-        var deadzone = (float)_settings.GamepadDeadzone;
-        return new(
-            IsActionPressed(GameActionIds.Thrust) || joyY < -deadzone,
-            IsActionPressed(GameActionIds.Reverse) || joyY > deadzone,
-            IsActionPressed(GameActionIds.TurnLeft) || joyX < -deadzone,
-            IsActionPressed(GameActionIds.TurnRight) || joyX > deadzone,
-            IsActionPressed(GameActionIds.Fire) || Input.IsJoyButtonPressed(0, BoundButton(GamepadActionIds.Fire)));
+        if (!_simulation.CanPlan)
+        {
+            SetStatus("Wait for the current turn to finish resolving");
+            return;
+        }
+        var accepted = _multiplayer?.IsInMatch == true
+            ? _multiplayer.SendControl(_simulation.SelectedShip.Id, input).Accepted
+            : _simulation.PlanManeuver(input);
+        if (!accepted)
+        {
+            SetStatus("That maneuver could not be queued");
+            return;
+        }
+        _replayRecorder?.RecordManeuver(_simulation.TurnNumber, input);
+        AdvanceTutorial(TutorialAction.PlotManeuver);
+        SetStatus($"{_simulation.SelectedShip.Name} maneuver plotted • commit when ready");
+        PlayCue(TacticalCue.Acknowledgement, "Maneuver plotted");
+    }
+
+    private void EndTurn()
+    {
+        if (!_simulation.CanPlan)
+        {
+            SetStatus(_simulation.Status == BattleStatus.Active ? "Turn is already resolving" : "Battle is complete");
+            return;
+        }
+        if (_multiplayer?.IsInMatch == true)
+        {
+            var result = _multiplayer.CommitTurn();
+            SetStatus(result.Message);
+            if (!result.Accepted) return;
+        }
+        else
+        {
+            _replayRecorder?.RecordEndTurn(_simulation.TurnNumber);
+            if (!_simulation.BeginTurnResolution()) return;
+            SetStatus($"TURN {_simulation.TurnNumber} • EXECUTING ORDERS");
+        }
+        AdvanceTutorial(TutorialAction.EndTurn);
+        PlayCue(TacticalCue.Acknowledgement, "Turn committed");
     }
 
     private void AdvanceVisualQa()
@@ -416,6 +441,7 @@ public sealed partial class Main : Node2D
                 CaptureVisualQaFrame("01-tutorial-briefing");
                 _showHelp = false;
                 _dispatcher.Dispatch(_rules.Parse("All ships, attack the nearest enemy").Command!, _simulation);
+                _simulation.BeginTurnResolution();
                 NextVisualQaStage();
                 break;
             case 1 when _simulation.ElapsedSeconds >= 2:
@@ -459,7 +485,7 @@ public sealed partial class Main : Node2D
                 _showHelp = false;
                 _simulation.LoadMission(MissionId.FirstCommand);
                 _simulation.FindShip("enemy-raider-leader")!.ApplyDamage(10_000);
-                _simulation.Update(BattleSimulation.FixedStep);
+                _simulation.ResolveTurn();
                 NextVisualQaStage();
                 break;
             case 8:
@@ -470,7 +496,11 @@ public sealed partial class Main : Node2D
                 _lastAcknowledgement = _dispatcher.Dispatch(
                     _rules.Parse(_lastIssuedCommand).Command!, _simulation);
                 _commandPulseTime = 12;
+                _simulation.BeginTurnResolution();
                 NextVisualQaStage();
+                break;
+            case 9 when _simulation.Phase == TurnPhase.Planning && _simulation.ElapsedSeconds < 8:
+                _simulation.BeginTurnResolution();
                 break;
             case 9 when _simulation.ElapsedSeconds >= 8:
                 _visualQaFreeze = true;
@@ -521,6 +551,29 @@ public sealed partial class Main : Node2D
 
     public override void _UnhandledInput(InputEvent inputEvent)
     {
+        if (inputEvent is InputEventJoypadMotion motion)
+        {
+            var magnitude = Math.Abs(motion.AxisValue);
+            var deadzone = (float)_settings.GamepadDeadzone;
+            if (magnitude < deadzone * 0.65f) _gamepadManeuverArmed = true;
+            if (!_gamepadManeuverArmed || magnitude < deadzone || _showHelp || _commandMode ||
+                _showSettings || _showBindings || _showMissionSelect || _showLocalAiSetup || _showMultiplayer)
+                return;
+            ManualInput? maneuver = motion.Axis switch
+            {
+                JoyAxis.LeftY when motion.AxisValue < 0 => new(true, false, false, false, false),
+                JoyAxis.LeftY => new(false, true, false, false, false),
+                JoyAxis.LeftX when motion.AxisValue < 0 => new(true, false, true, false, false),
+                JoyAxis.LeftX => new(true, false, false, true, false),
+                _ => null
+            };
+            if (maneuver is null) return;
+            _gamepadManeuverArmed = false;
+            _lastInputWasController = true;
+            PlanHelmAction(maneuver.Value);
+            GetViewport().SetInputAsHandled();
+            return;
+        }
         if (inputEvent is InputEventJoypadButton { Pressed: true } joypad)
         {
             _lastInputWasController = true;
@@ -634,6 +687,30 @@ public sealed partial class Main : Node2D
         else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Ability))
         {
             ActivateSelectedAbility();
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.EndTurn))
+        {
+            EndTurn();
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Thrust))
+        {
+            PlanHelmAction(new(true, false, false, false, false));
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Reverse))
+        {
+            PlanHelmAction(new(false, true, false, false, false));
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.TurnLeft))
+        {
+            PlanHelmAction(new(true, false, true, false, false));
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.TurnRight))
+        {
+            PlanHelmAction(new(true, false, false, true, false));
+        }
+        else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Fire))
+        {
+            PlanHelmAction(new(false, false, false, false, true));
         }
         else if (!_showHelp && IsActionKey(key.Keycode, GameActionIds.Pause))
         {
@@ -760,8 +837,8 @@ public sealed partial class Main : Node2D
         var (eyebrow, title) = _trailerTime switch
         {
             < 8 => ("NATURAL-LANGUAGE ORDER", "ALL SHIPS, ATTACK THE ENEMY FLAGSHIP"),
-            < 13 => ("INSTANT SHIP SWITCH", "FLY ANY VESSEL IN YOUR FLEET"),
-            < 18 => ("TACTICAL ABILITIES", "TURN ONE ORDER INTO A BATTLEFIELD CONSEQUENCE"),
+            < 13 => ("PAUSED FLEET PLANNING", "PLOT EVERY SHIP • COMMIT WHEN READY"),
+            < 18 => ("SIMULTANEOUS RESOLUTION", "BOTH FLEETS EXECUTE • EVERY ORDER MATTERS"),
             _ => ("FULL-FLEET WARFARE", "SOLO CAMPAIGN  •  HOSTED CO-OP  •  PVP")
         };
         DrawStyleBox(new StyleBoxFlat
@@ -976,6 +1053,12 @@ public sealed partial class Main : Node2D
     {
         SetStatus($"{lobby.Mode} lobby • {lobby.Players.Count}/{lobby.MaximumPlayers} captains");
         RefreshMultiplayerControlVisibility();
+        if (_multiplayerSmokeHost && _multiplayerSmokePassed && lobby.MatchStarted && lobby.Players.Count < 2)
+        {
+            _multiplayer?.Close(false);
+            GetTree().Quit();
+            return;
+        }
         if (_multiplayerSmokeHost && !lobby.MatchStarted && lobby.Players.Count >= 2)
         {
             GD.Print($"AFC_MP_HOST_JOINED players={lobby.Players.Count}");
@@ -992,7 +1075,7 @@ public sealed partial class Main : Node2D
         _wasMultiplayerMatch = true;
         _simulation = new(start.Snapshot.Frame.MissionId, start.Snapshot.Frame.Seed);
         _simulation.ApplyFrame(start.Snapshot.Frame);
-        _simulationTick = start.Snapshot.ServerTick;
+        _lastMultiplayerCommittedTurn = 0;
         _observedBattleStatus = BattleStatus.Active;
         _previousProjectileCount = 0;
         _heardCombatEvents.Clear();
@@ -1008,9 +1091,7 @@ public sealed partial class Main : Node2D
         if (_multiplayerSmokeHost || _multiplayerSmokeClient)
         {
             GD.Print($"AFC_MP_MATCH_STARTED role={(_multiplayerSmokeHost ? "host" : "client")}");
-            var command = _rules.Parse("All ships, attack the enemy flagship").Command!;
-            var admission = _multiplayer!.SendCommand(command, _simulation.SelectedShip.Id, _simulation);
-            if (!admission.Accepted) throw new InvalidOperationException(admission.Message);
+            AdvanceMultiplayerSmoke(start.Snapshot.ServerTurn);
         }
     }
 
@@ -1018,7 +1099,6 @@ public sealed partial class Main : Node2D
     {
         if (_multiplayer?.IsInMatch != true) return;
         _simulation.ApplyFrame(snapshot.Frame);
-        _simulationTick = snapshot.ServerTick;
         EnsureLocalShipSelected();
         if ((_multiplayerSmokeHost || _multiplayerSmokeClient) && !_multiplayerSmokePassed)
         {
@@ -1026,25 +1106,40 @@ public sealed partial class Main : Node2D
             {
                 _multiplayerSmokeSnapshotSeen = true;
                 GD.Print($"AFC_MP_SNAPSHOT role={(_multiplayerSmokeHost ? "host" : "client")}" +
-                         $" tick={snapshot.ServerTick}");
+                         $" turn={snapshot.ServerTurn}");
             }
             var checksum = SimulationChecksum.Compute(_simulation);
             if (!checksum.Equals(snapshot.Checksum, StringComparison.Ordinal))
                 throw new InvalidOperationException("Multiplayer snapshot checksum did not recover the client state");
-            var requiredTick = _multiplayerSmokeHost ? 240 : 180;
-            if (snapshot.ServerTick >= requiredTick)
+            if (snapshot.ServerTurn >= 4)
             {
                 _multiplayerSmokePassed = true;
                 var role = _multiplayerSmokeHost ? "HOST" : "CLIENT";
                 GD.Print($"AFC_MP_{role}_PASS mode={_multiplayerSmokeMode}" +
-                         $" tick={snapshot.ServerTick} ships={_multiplayer!.LocalShipIds.Count}");
+                         $" turn={snapshot.ServerTurn} ships={_multiplayer!.LocalShipIds.Count}");
+                if (_multiplayerSmokeHost) return;
                 Callable.From(() =>
                 {
                     _multiplayer?.Close(false);
                     GetTree().Quit();
                 }).CallDeferred();
             }
+            else
+            {
+                AdvanceMultiplayerSmoke(snapshot.ServerTurn);
+            }
         }
+    }
+
+    private void AdvanceMultiplayerSmoke(int turn)
+    {
+        if (_multiplayer is null || turn <= _lastMultiplayerCommittedTurn) return;
+        _lastMultiplayerCommittedTurn = turn;
+        var command = _rules.Parse("All ships, attack the enemy flagship").Command!;
+        var admission = _multiplayer.SendCommand(command, _simulation.SelectedShip.Id, _simulation);
+        if (!admission.Accepted) throw new InvalidOperationException(admission.Message);
+        var commit = _multiplayer.CommitTurn();
+        if (!commit.Accepted) throw new InvalidOperationException(commit.Message);
     }
 
     private void OnMultiplayerNotice(string notice)
@@ -1059,7 +1154,6 @@ public sealed partial class Main : Node2D
         if (state != MultiplayerSessionState.Offline || !_wasMultiplayerMatch) return;
         _wasMultiplayerMatch = false;
         _simulation = new(MissionId.FirstCommand);
-        _simulationTick = 0;
         _observedBattleStatus = BattleStatus.Active;
         _showHelp = true;
         _paused = false;
@@ -1113,7 +1207,7 @@ public sealed partial class Main : Node2D
             AddLog(result.Message);
             return;
         }
-        _replayRecorder?.RecordCommand(_simulationTick, result.Command);
+        _replayRecorder?.RecordCommand(_simulation.TurnNumber, result.Command);
         var acknowledgement = _multiplayer?.IsInMatch == true
             ? _multiplayer.SendCommand(result.Command, _simulation.SelectedShip.Id, _simulation).Message
             : _dispatcher.Dispatch(result.Command, _simulation);
@@ -1154,18 +1248,22 @@ public sealed partial class Main : Node2D
     {
         if (_multiplayer?.IsInMatch == true)
         {
-            var admission = _multiplayer.SendControl(_simulation.SelectedShip.Id, ReadManualInput(), true);
+            var admission = _multiplayer.SendControl(_simulation.SelectedShip.Id, ManualInput.None, true);
             SetStatus(admission.Accepted ? $"{_simulation.SelectedShip.Name} ability requested" : admission.Message);
-            if (admission.Accepted) PlayCue(TacticalCue.Ability, "Ability request relayed");
+            if (admission.Accepted)
+            {
+                AdvanceTutorial(TutorialAction.ActivateAbility);
+                PlayCue(TacticalCue.Ability, "Ability queued");
+            }
             return;
         }
-        _replayRecorder?.RecordAbility(_simulationTick);
-        var cooldownBefore = _simulation.SelectedShip.AbilityCooldown;
+        _replayRecorder?.RecordAbility(_simulation.TurnNumber);
+        var wasPlanned = _simulation.IsAbilityPlanned(_simulation.SelectedShip.Id);
         var abilityMessage = _simulation.TryActivateSelectedAbility();
-        if (cooldownBefore <= 0 && _simulation.SelectedShip.AbilityCooldown > 0)
+        if (!wasPlanned && _simulation.IsAbilityPlanned(_simulation.SelectedShip.Id))
         {
             AdvanceTutorial(TutorialAction.ActivateAbility);
-            PlayCue(TacticalCue.Ability, $"{_simulation.SelectedShip.Name} ability activated");
+            PlayCue(TacticalCue.Ability, $"{_simulation.SelectedShip.Name} ability queued");
         }
         SetStatus(abilityMessage);
         AddLog(abilityMessage);
@@ -1179,7 +1277,7 @@ public sealed partial class Main : Node2D
             if (ships.Count > 0) _simulation.SelectShip(ships[Math.Clamp(index, 0, ships.Count - 1)].Id);
             return;
         }
-        _replayRecorder?.RecordShipSelection(_simulationTick, index);
+        _replayRecorder?.RecordShipSelection(_simulation.TurnNumber, index);
         _simulation.SelectPlayerShip(index);
         AdvanceTutorial(TutorialAction.SwitchShip);
     }
@@ -1194,7 +1292,7 @@ public sealed partial class Main : Node2D
             _simulation.SelectShip(ships[(current + 1 + ships.Count) % ships.Count].Id);
             return;
         }
-        _replayRecorder?.RecordShipCycle(_simulationTick);
+        _replayRecorder?.RecordShipCycle(_simulation.TurnNumber);
         _simulation.CycleSelectedShip();
         AdvanceTutorial(TutorialAction.SwitchShip);
     }
@@ -1269,6 +1367,30 @@ public sealed partial class Main : Node2D
         if (IsGamepadButton(button, GamepadActionIds.SwitchShip))
         {
             CyclePlayerShip();
+        }
+        else if (IsGamepadButton(button, GamepadActionIds.EndTurn))
+        {
+            EndTurn();
+        }
+        else if (IsGamepadButton(button, GamepadActionIds.Fire))
+        {
+            PlanHelmAction(new(false, false, false, false, true));
+        }
+        else if (button == JoyButton.DpadUp)
+        {
+            PlanHelmAction(new(true, false, false, false, false));
+        }
+        else if (button == JoyButton.DpadDown)
+        {
+            PlanHelmAction(new(false, true, false, false, false));
+        }
+        else if (button == JoyButton.DpadLeft)
+        {
+            PlanHelmAction(new(true, false, true, false, false));
+        }
+        else if (button == JoyButton.DpadRight)
+        {
+            PlanHelmAction(new(true, false, false, true, false));
         }
         else if (IsGamepadButton(button, GamepadActionIds.Ability))
         {
@@ -1616,14 +1738,13 @@ public sealed partial class Main : Node2D
 
     private void StartReplayRecording()
     {
-        _simulationTick = 0;
         _replayRecorder = new(_simulation.Mission.Id, _simulation.Seed);
     }
 
     private void SaveCompletedReplay()
     {
         if (_replayRecorder is null || _replayStore is null) return;
-        var replay = _replayRecorder.Complete(_simulationTick, _simulation);
+        var replay = _replayRecorder.Complete(_simulation.TurnNumber, _simulation);
         var path = _replayStore.Save(replay);
         var valid = ReplayRunner.Validate(replay);
         AddLog(valid ? "Replay verified and saved." : "Replay desynchronization detected.");
@@ -1646,34 +1767,34 @@ public sealed partial class Main : Node2D
 
     private void RunBenchmark(bool quitWhenComplete)
     {
-        const int totalBenchmarkTicks = 60 * 180 * 3;
-        var ticksPerMission = totalBenchmarkTicks / MissionCatalog.All.Count;
+        const int totalBenchmarkTurns = 2400;
+        var turnsPerMission = totalBenchmarkTurns / MissionCatalog.All.Count;
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-        var ticks = 0;
+        var turns = 0;
         foreach (var mission in MissionCatalog.All)
         {
             var simulation = new BattleSimulation(mission.Id);
             var command = _rules.Parse("All ships, attack the nearest enemy").Command!;
             _dispatcher.Dispatch(command, simulation);
-            for (var index = 0; index < ticksPerMission; index++)
+            for (var index = 0; index < turnsPerMission; index++)
             {
                 if (simulation.Status != BattleStatus.Active)
                 {
                     simulation.Reset();
                     _dispatcher.Dispatch(command, simulation);
                 }
-                simulation.Update(BattleSimulation.FixedStep);
-                ticks++;
+                simulation.ResolveTurn();
+                turns++;
             }
         }
         stopwatch.Stop();
-        var ticksPerSecond = ticks / Math.Max(0.001, stopwatch.Elapsed.TotalSeconds);
-        var report = $"UTC={DateTime.UtcNow:O}\nTicks={ticks}\nSeconds={stopwatch.Elapsed.TotalSeconds:F4}\nTicksPerSecond={ticksPerSecond:F0}\n";
+        var turnsPerSecond = turns / Math.Max(0.001, stopwatch.Elapsed.TotalSeconds);
+        var report = $"UTC={DateTime.UtcNow:O}\nTurns={turns}\nSeconds={stopwatch.Elapsed.TotalSeconds:F4}\nTurnsPerSecond={turnsPerSecond:F0}\n";
         var directory = ProjectSettings.GlobalizePath("user://benchmarks");
         Directory.CreateDirectory(directory);
         File.WriteAllText(Path.Combine(directory, $"benchmark-{DateTime.UtcNow:yyyyMMdd-HHmmss}.txt"), report);
-        GD.Print($"AFC_BENCHMARK_PASS ticks={ticks} ticks_per_second={ticksPerSecond:F0}");
-        SetStatus($"Benchmark: {ticksPerSecond:F0} simulation ticks/s");
+        GD.Print($"AFC_BENCHMARK_PASS turns={turns} turns_per_second={turnsPerSecond:F0}");
+        SetStatus($"Benchmark: {turnsPerSecond:F0} tactical turns/s");
         if (quitWhenComplete) GetTree().Quit();
     }
 
@@ -1966,12 +2087,14 @@ public sealed partial class Main : Node2D
             {
                 TutorialAction.SwitchShip =>
                     $"Press {GamepadButtonLabel(GamepadActionIds.SwitchShip)} to take another helm",
-                TutorialAction.ManualControl =>
-                    $"Fly with the left stick; fire with {GamepadButtonLabel(GamepadActionIds.Fire)}",
+                TutorialAction.PlotManeuver =>
+                    $"Use the left stick or D-pad to plot a burn; {GamepadButtonLabel(GamepadActionIds.Fire)} attacks",
                 TutorialAction.IssueOrder =>
                     $"Press {GamepadButtonLabel(GamepadActionIds.Voice)} and speak a fleet order",
                 TutorialAction.ActivateAbility =>
                     $"Press {GamepadButtonLabel(GamepadActionIds.Ability)} for this ship’s tactical ability",
+                TutorialAction.EndTurn =>
+                    $"Press {GamepadButtonLabel(GamepadActionIds.EndTurn)} when the plan is ready",
                 _ => _tutorial.GetPrompt(true)
             };
         }
@@ -1979,14 +2102,16 @@ public sealed partial class Main : Node2D
         {
             TutorialAction.SwitchShip =>
                 $"Press {BindingLabel(GameActionIds.SwitchShip)} or 1–4 to take another helm",
-            TutorialAction.ManualControl =>
-                $"Fly with {BindingLabel(GameActionIds.Thrust)}/{BindingLabel(GameActionIds.Reverse)} and " +
+            TutorialAction.PlotManeuver =>
+                $"Plot with {BindingLabel(GameActionIds.Thrust)}/{BindingLabel(GameActionIds.Reverse)} and " +
                 $"{BindingLabel(GameActionIds.TurnLeft)}/{BindingLabel(GameActionIds.TurnRight)}; " +
-                $"fire with {BindingLabel(GameActionIds.Fire)}",
+                $"queue weapons with {BindingLabel(GameActionIds.Fire)}",
             TutorialAction.IssueOrder =>
                 $"Press {BindingLabel(GameActionIds.Command)}, type an order, then confirm it",
             TutorialAction.ActivateAbility =>
                 $"Press {BindingLabel(GameActionIds.Ability)} to activate this ship’s tactical ability",
+            TutorialAction.EndTurn =>
+                $"Press {BindingLabel(GameActionIds.EndTurn)} to execute both fleets’ plans",
             _ => _tutorial.CurrentPrompt
         };
     }
@@ -2427,14 +2552,16 @@ public sealed partial class Main : Node2D
         DrawFactionBar(new(835, 18), 245, (float)(_simulation.FleetStrength(Team.Enemy) /
             Math.Max(0.01, _simulation.InitialEnemyStrength)),
             "KETZAL EMPIRE", Red);
-        var totalSeconds = (int)_simulation.ElapsedSeconds;
-        DrawCenteredLabel($"{totalSeconds / 60:00}:{totalSeconds % 60:00}", 800, 40, 18,
-            new Color("e5edf5"), 120);
+        var phase = _simulation.Phase == TurnPhase.Planning ? "PLANNING" :
+            _simulation.Phase == TurnPhase.Resolving ? "RESOLVING" : "COMPLETE";
+        DrawCenteredLabel($"TURN {_simulation.TurnNumber}  •  {phase}", 800, 40, 16,
+            _simulation.Phase == TurnPhase.Planning ? new Color("ffd065") : new Color("e5edf5"), 210);
         DrawFleetPanel();
         DrawSelectedPanel();
         DrawCommandLog();
         DrawObjective();
         DrawRadar();
+        DrawTurnControl();
 
         if (!string.IsNullOrWhiteSpace(_status) && !_commandMode)
         {
@@ -2450,6 +2577,32 @@ public sealed partial class Main : Node2D
             DrawCenteredLabel($"♪  {_audioCaption}", 800, 705, 13, Colors.White, 510);
         }
         DrawDamageAlert();
+    }
+
+    private void DrawTurnControl()
+    {
+        if (_simulation.Status != BattleStatus.Active) return;
+        DrawPanel(new(590, 797, 420, 64));
+        if (_simulation.Phase == TurnPhase.Planning)
+        {
+            var commit = _lastInputWasController
+                ? GamepadButtonLabel(GamepadActionIds.EndTurn)
+                : BindingLabel(GameActionIds.EndTurn);
+            var waiting = _multiplayer?.IsWaitingForTurn == true;
+            DrawCenteredLabel(waiting ? $"TURN {_simulation.TurnNumber} READY • WAITING FOR CAPTAINS" :
+                    $"{commit}  COMMIT TURN {_simulation.TurnNumber}", 800, 823, waiting ? 13 : 16,
+                new Color("ffd065"), 390);
+            var planSummary = _multiplayer?.IsInMatch == true
+                ? "HOST-AUTHORITATIVE SIMULTANEOUS TURN"
+                : $"{_simulation.PlannedManeuverCount} MANEUVERS  •  " +
+                  $"{_simulation.PlannedAbilityCount} ABILITIES QUEUED";
+            DrawCenteredLabel(planSummary,
+                800, 847, 10, new Color("8eb8ca"), 390);
+            return;
+        }
+        var resolved = 1 - _simulation.ResolutionSecondsRemaining / BattleSimulation.ResolutionDuration;
+        DrawCenteredLabel($"EXECUTING TURN {_simulation.TurnNumber}", 800, 823, 15, Colors.White, 390);
+        DrawBar(new(625, 840), 350, 7, (float)resolved, Cyan);
     }
 
     private void DrawBattlefieldFrame()
@@ -2518,7 +2671,7 @@ public sealed partial class Main : Node2D
         var ship = _simulation.SelectedShip;
         DrawPanel(new(20, 710, 300, 166));
         DrawLabel(ship.Name.ToUpperInvariant(), new(36, 737), 18, Colors.White);
-        DrawLabel($"{ship.Class.ToString().ToUpperInvariant()}  •  MANUAL CONTROL", new(36, 756), 12,
+        DrawLabel($"{ship.Class.ToString().ToUpperInvariant()}  •  TACTICAL PLAN", new(36, 756), 12,
             new Color("82beda"));
         if (_shipTextures.TryGetValue(ship.Class, out var texture))
         {
@@ -2679,11 +2832,11 @@ public sealed partial class Main : Node2D
                 ($"1–4 / {BindingLabel(GameActionIds.SwitchShip)}", "Switch controlled ship"),
                 ($"{BindingLabel(GameActionIds.Thrust)} {BindingLabel(GameActionIds.Reverse)} / " +
                  $"{BindingLabel(GameActionIds.TurnLeft)} {BindingLabel(GameActionIds.TurnRight)}",
-                    "Thrust and rotate"),
-                (BindingLabel(GameActionIds.Fire), "Fire at nearest target"),
+                    "Plot one-turn maneuver"),
+                (BindingLabel(GameActionIds.Fire), "Queue weapons attack"),
                 (BindingLabel(GameActionIds.Command), "Type a natural-language fleet order"),
                 (BindingLabel(GameActionIds.Ability), "Use the selected ship’s tactical ability"),
-                (BindingLabel(GameActionIds.Voice), "Local voice command adapter")
+                (BindingLabel(GameActionIds.EndTurn), "Commit plan and resolve both fleets")
             };
             var y = 455;
             foreach (var (key, description) in controls)
@@ -2843,7 +2996,7 @@ public sealed partial class Main : Node2D
         DrawPanel(new(270, 135, 1060, 630));
         DrawCenteredLabel(_simulation.Mission.Narrative.Chapter, 800, 174, 13, Cyan, 900);
         DrawCenteredLabel("CAPTAIN'S DRILL", 800, 205, 38, Colors.White, 900);
-        DrawCenteredLabel("Four actions. About sixty seconds. Learn by commanding.", 800, 242, 16,
+        DrawCenteredLabel("Five actions. About sixty seconds. Learn by commanding.", 800, 242, 16,
             Cyan, 900);
         DrawCenteredLabel(_simulation.Mission.Narrative.BriefingLines[0],
             800, 278, 13, new Color("c9dce6"), 920);
@@ -2855,7 +3008,7 @@ public sealed partial class Main : Node2D
             var step = TutorialTracker.Steps[index];
             var completed = index < _tutorial.CompletedSteps;
             var active = index == _tutorial.CompletedSteps;
-            var x = 332 + index * 238;
+            var x = 210 + index * 238;
             var color = completed ? new Color("48eba9") : active ? new Color("ffd065") : Cyan;
             DrawPanel(new(x, 350, 214, 230));
             DrawCircle(new(x + 107, 397), 23, new(color, 0.2f));
@@ -2866,13 +3019,15 @@ public sealed partial class Main : Node2D
             {
                 TutorialAction.SwitchShip =>
                     $"{BindingLabel(GameActionIds.SwitchShip)}  /  {GamepadButtonLabel(GamepadActionIds.SwitchShip)}",
-                TutorialAction.ManualControl =>
+                TutorialAction.PlotManeuver =>
                     $"{BindingLabel(GameActionIds.Thrust)}{BindingLabel(GameActionIds.TurnLeft)}" +
                     $"{BindingLabel(GameActionIds.Reverse)}{BindingLabel(GameActionIds.TurnRight)}  /  STICK",
                 TutorialAction.IssueOrder =>
                     $"{BindingLabel(GameActionIds.Command)}  /  {GamepadButtonLabel(GamepadActionIds.Voice)}",
+                TutorialAction.ActivateAbility =>
+                    $"{BindingLabel(GameActionIds.Ability)}  /  {GamepadButtonLabel(GamepadActionIds.Ability)}",
                 _ =>
-                    $"{BindingLabel(GameActionIds.Ability)}  /  {GamepadButtonLabel(GamepadActionIds.Ability)}"
+                    $"{BindingLabel(GameActionIds.EndTurn)}  /  {GamepadButtonLabel(GamepadActionIds.EndTurn)}"
             }, x + 107, 490, 14, color, 190);
             DrawCenteredLabel(step.Purpose, x + 107, 538, 12, new Color("9fc5d6"), 190);
         }
@@ -3037,9 +3192,9 @@ public sealed partial class Main : Node2D
         }
         DrawCenteredLabel("K  Keyboard controls     •     PAD Y  Controller buttons",
             800, 684, 14, new Color("ffd065"), 700);
-        DrawCenteredLabel($"Controller: left stick fly • {GamepadButtonLabel(GamepadActionIds.Fire)} fire • " +
+        DrawCenteredLabel($"Controller: stick/D-pad plot • {GamepadButtonLabel(GamepadActionIds.Fire)} attack • " +
                   $"{GamepadButtonLabel(GamepadActionIds.Ability)} ability • " +
-                  $"{GamepadButtonLabel(GamepadActionIds.SwitchShip)} switch ship",
+                  $"{GamepadButtonLabel(GamepadActionIds.EndTurn)} commit turn",
             800, 716, 13, new Color("9bc9dc"), 700);
         DrawCenteredLabel("F10 or Esc to close", 800, 750, 13, new Color("87b5ca"), 700);
     }

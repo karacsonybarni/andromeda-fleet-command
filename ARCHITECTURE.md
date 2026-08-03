@@ -23,7 +23,7 @@ triggers.
 Godot presentation and input
             |
             v
-      application loop
+ simultaneous-turn coordinator
             |
             v
  command interpreter ---> validated fleet command
@@ -42,7 +42,9 @@ optional adapters: Ollama | whisper.cpp | Steamworks | persistence
 
 Pure .NET with no Godot dependency. It owns ships, orders, projectiles,
 abilities, command parsing, command validation, AI pilots, combat, and battle
-outcomes. It runs headlessly in tests and can later run on a dedicated server.
+outcomes. `BattleSimulation` exposes a locked planning phase followed by a bounded,
+fixed-step resolution phase; wall-clock time cannot advance battle state while a
+captain thinks. It runs headlessly in tests and can later run on a dedicated server.
 
 ### AndromedaFleetCommand.Game
 
@@ -72,7 +74,8 @@ working.
 
 ## Performance strategy
 
-- Fixed 60 Hz simulation with stable entity ordering
+- Fixed 60 Hz integration inside deterministic three-second turn windows
+- Zero simulation work while the player remains in planning
 - Allocation-conscious value types in the hot simulation path
 - Rendering decoupled from simulation updates
 - No native extension before profiling
@@ -84,12 +87,12 @@ working.
 The multiplayer model is host-authoritative. `FleetLobby` assigns each captain
 one team and a disjoint set of ships; `AuthoritativeFleetSession` accepts input
 only for those ships, bounds payloads and pending work, rejects duplicate
-sequences and out-of-window ticks, advances the fixed-step simulation, and
-emits complete checksummed recovery snapshots.
+sequences and wrong-turn plans, waits for every connected captain to commit,
+resolves once, and emits complete checksummed recovery snapshots.
 
 `MultiplayerManager` is the Godot-only ENet adapter. It maps untrusted network
-peers to server-owned player IDs, sends intent to the host over separate
-control/snapshot channels, and applies snapshots on clients. The pure core has
+peers to server-owned player IDs, sends bounded plans and ready signals to the
+host, and applies versioned snapshots on clients. The pure core has
 no ENet or Steam dependency. A future Steam transport can replace discovery and
 connectivity while retaining the same lobby/session protocol. Steam
 lobbies/relay, host migration, reconnection, and adversarial Internet soak
