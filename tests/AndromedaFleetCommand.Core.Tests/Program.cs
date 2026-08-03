@@ -44,6 +44,8 @@ var tests = new (string Name, Action Body)[]
     ("Fleet Duel is balanced for versus play", FleetDuelIsBalanced),
     ("Cooperative lobby partitions allied ships", CooperativeLobbyPartitionsAlliedShips),
     ("Versus lobby assigns opposing fleets", VersusLobbyAssignsOpposingFleets),
+    ("Lobby reserves disconnected captain seats", LobbyReservesDisconnectedCaptainSeats),
+    ("Reconnected captains recover ownership and current state", ReconnectedCaptainsRecoverOwnership),
     ("Multiplayer wire codec rejects malformed payloads", MultiplayerWireCodecRejectsMalformedPayloads),
     ("Authoritative session rejects unauthorized commands", AuthoritativeSessionRejectsUnauthorizedCommands),
     ("Authoritative session applies owned commands", AuthoritativeSessionAppliesOwnedCommands),
@@ -923,6 +925,50 @@ static void VersusLobbyAssignsOpposingFleets()
     Equal(Team.Enemy, session!.AssignedTeam("2")!.Value, "Server records enemy-team ownership");
 }
 
+static void LobbyReservesDisconnectedCaptainSeats()
+{
+    var lobby = new FleetLobby("1", "Host", MultiplayerMode.Versus);
+    True(lobby.TryAddPlayer("2", "Red Captain").Accepted, "Opponent joins");
+    var before = lobby.Snapshot().Players.Single(player => player.PlayerId == "2");
+    var (started, _) = lobby.StartMatch();
+    True(started.Accepted, "Versus match starts");
+
+    True(lobby.MarkDisconnected("2").Accepted, "Disconnected captain receives a reservation");
+    var reserved = lobby.Snapshot().Players.Single(player => player.PlayerId == "2");
+    True(!reserved.Connected, "Reserved captain is visibly disconnected");
+    Equal(before.Team, reserved.Team, "Reservation retains the captain's team");
+    True(before.ShipIds.SequenceEqual(reserved.ShipIds), "Reservation retains ship ownership");
+    True(!lobby.TryAddPlayer("3", "Intruder").Accepted, "New captains cannot enter a running match");
+    True(!lobby.ReconnectPlayer("2", "1").Accepted, "Reconnection cannot take an active identity");
+    True(lobby.ReconnectPlayer("2", "2").Accepted, "A transport may safely reuse its previous peer ID");
+}
+
+static void ReconnectedCaptainsRecoverOwnership()
+{
+    var lobby = new FleetLobby("1", "Host", MultiplayerMode.Cooperative);
+    True(lobby.TryAddPlayer("2", "Wing Captain").Accepted, "Wing captain joins");
+    var before = lobby.Snapshot().Players.Single(player => player.PlayerId == "2");
+    var (started, session) = lobby.StartMatch();
+    True(started.Accepted && session is not null, "Co-op match starts");
+
+    session!.SubmitControl(new(1, 1, "2", before.ShipIds[0], new(true, false, false, false, false)));
+    True(session.UnassignPlayer("2"), "Disconnected captain is removed from the ready barrier");
+    True(lobby.MarkDisconnected("2").Accepted, "Lobby retains the disconnected seat");
+    True(lobby.ReconnectPlayer("2", "7").Accepted, "Token holder receives a new network identity");
+    var recovered = lobby.Snapshot().Players.Single(player => player.PlayerId == "7");
+    True(recovered.Connected, "Reconnected captain is marked online");
+    True(before.ShipIds.SequenceEqual(recovered.ShipIds), "Reconnected captain recovers every ship");
+
+    session.AssignPlayer("7", recovered.ShipIds.ToArray());
+    Equal(before.Team, session.AssignedTeam("7")!.Value, "Authoritative ownership retains the team");
+    var snapshot = session.Snapshot();
+    Equal(session.ServerTurn, snapshot.ServerTurn, "Reconnected client receives the current turn");
+    Equal(SimulationChecksum.Compute(session.Simulation), snapshot.Checksum,
+        "Recovery snapshot matches authoritative state");
+    True(!session.Simulation.FindShip(before.ShipIds[0])!.IsManuallyControlled,
+        "Plans submitted before disconnect are discarded");
+}
+
 static void MultiplayerWireCodecRejectsMalformedPayloads()
 {
     var lobby = new FleetLobby("1", "Host", MultiplayerMode.Cooperative).Snapshot();
@@ -931,6 +977,12 @@ static void MultiplayerWireCodecRejectsMalformedPayloads()
         "Lobby payload round-trips");
     Equal(lobby.MissionId, decoded!.MissionId, "Mission survives wire encoding");
     Equal(lobby.Players[0].DisplayName, decoded.Players[0].DisplayName, "Player survives wire encoding");
+    True(decoded.Players[0].Connected, "Connection state survives wire encoding");
+    var token = Guid.NewGuid().ToString("N");
+    var joinPayload = MultiplayerWire.Serialize(new JoinRequest("Captain", MultiplayerWire.ProtocolVersion, token));
+    True(MultiplayerWire.TryDeserialize<JoinRequest>(joinPayload, out var join) && join is not null,
+        "Reconnect request round-trips");
+    Equal(token, join!.ReconnectToken, "Reconnect identity survives wire encoding");
     True(!MultiplayerWire.TryDeserialize<FleetLobbySnapshot>("{broken", out _),
         "Malformed JSON is rejected");
     True(!MultiplayerWire.TryDeserialize<FleetLobbySnapshot>(

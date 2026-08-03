@@ -10,7 +10,7 @@ Command:
 dotnet run --project tests/AndromedaFleetCommand.Core.Tests
 ~~~
 
-Result: **45 tests, 0 failures**.
+Result: **47 tests, 0 failures**.
 
 Coverage includes:
 
@@ -31,8 +31,8 @@ Coverage includes:
 - accessibility-setting normalization and corrupt-settings recovery
 - deterministic replay checksums, persistence, and corruption rejection
 - authoritative multiplayer ownership, sequencing, all-captains-ready turns, and deterministic snapshot validation
-- cooperative and PvP lobby assignment, malformed-payload rejection, disconnect
-  recovery, and deterministic authoritative sessions
+- cooperative and PvP lobby assignment, malformed-payload rejection, reserved-seat reconnect
+  ownership/state recovery, disconnect recovery, and deterministic authoritative sessions
 - planned maneuver and speed limits
 - validated command dispatch
 - tactical-ability cooldowns
@@ -63,11 +63,13 @@ in a normal Godot .NET installation.
 - Headless resource leak check after presentation load: passed
 - Live two-process ENet cooperative match: passed
 - Live two-process ENet PvP match: passed
+- Live three-process ENet disconnect/rejoin with current-turn recovery: passed
 - Packaged native Windows headless launch and bundled whisper.cpp startup: passed
 
 Both multiplayer modes are exercised with separate host and client Godot
-processes. The check requires matching modes, advancing authoritative snapshots,
-clean process exits, and no oversized-packet/MTU warnings.
+processes. A separate test disconnects the guest on turn two, starts a fresh client process with the same persistent
+identity, and requires the reserved fleet to recover from the host's checksummed current turn. The checks require
+matching modes, advancing authoritative snapshots, clean process exits, and no oversized-packet/MTU warnings.
 
 The release workflow also performs a clean launch of the exported Linux build
 and requires the smoke marker before it uploads either desktop package. This

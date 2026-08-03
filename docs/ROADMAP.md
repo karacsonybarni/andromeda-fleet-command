@@ -46,7 +46,8 @@
 - [x] Deterministic input recording and final-state replay checksum validation
 - [x] Authoritative command ownership, sequence, turn-window, and all-captains-ready validation core
 - [x] Direct-IP ENet host/client transport, in-game lobbies, co-op vs bots, balanced PvP, and snapshot recovery
-- [ ] Steam lobby/invitation/relay adapter, host migration, reconnection, and adversarial network soak testing
+- [x] Reserved-seat guest reconnection with authoritative current-turn recovery
+- [ ] Steam lobby/invitation/relay adapter, host migration, and adversarial network soak testing
 - [x] Persistent settings, gamepad turn planning, color-vision palettes, captions, and reduced flashes
 - [x] Persistent conflict-safe keyboard action rebinding with dynamic HUD and tutorial prompts
 - [x] Persistent controller combat/navigation button remapping with controller-only navigation

@@ -24,11 +24,15 @@ public sealed partial class MultiplayerManager : Node
 {
     public const int DefaultPort = 7777;
     private const int MaximumClients = FleetLobby.MaximumPlayers - 1;
+    private const string ReconnectTokenEnvironmentVariable = "AFC_RECONNECT_TOKEN";
+    private const string ReconnectTokenFile = "multiplayer-reconnect-token.txt";
 
     private ENetMultiplayerPeer? _peer;
     private FleetLobby? _hostLobby;
     private AuthoritativeFleetSession? _hostSession;
+    private readonly Dictionary<string, string> _reconnectPlayers = new(StringComparer.Ordinal);
     private string _pendingDisplayName = "Captain";
+    private string _reconnectToken = string.Empty;
     private long _sequence;
 
     public event Action<FleetLobbySnapshot>? LobbyChanged;
@@ -57,6 +61,7 @@ public sealed partial class MultiplayerManager : Node
 
     public override void _Ready()
     {
+        _reconnectToken = LoadOrCreateReconnectToken();
         Multiplayer.PeerConnected += OnPeerConnected;
         Multiplayer.PeerDisconnected += OnPeerDisconnected;
         Multiplayer.ConnectedToServer += OnConnectedToServer;
@@ -248,6 +253,7 @@ public sealed partial class MultiplayerManager : Node
         _peer?.Close();
         _hostLobby = null;
         _hostSession = null;
+        _reconnectPlayers.Clear();
         Lobby = null;
         LatestSnapshot = null;
         LocalPlayerId = string.Empty;
@@ -260,7 +266,9 @@ public sealed partial class MultiplayerManager : Node
     private void BeginHostedMatch(AuthoritativeFleetSession session)
     {
         _hostSession = session;
-        if (_peer is not null) _peer.RefuseNewConnections = true;
+        // New peers may connect during a match, but only a holder of a reserved
+        // captain's unguessable token is admitted by RequestJoinRpc.
+        if (_peer is not null) _peer.RefuseNewConnections = false;
         var lobby = _hostLobby!.Snapshot();
         var snapshot = session.Snapshot();
         Lobby = lobby;
@@ -302,18 +310,23 @@ public sealed partial class MultiplayerManager : Node
         if (!IsHost || _hostLobby is null) return;
         var playerId = peerId.ToString();
         if (_hostSession?.UnassignPlayer(playerId) == true) PublishSnapshot(_hostSession.Snapshot());
-        var result = _hostLobby.RemovePlayer(playerId);
+        var result = _hostLobby.MatchStarted
+            ? _hostLobby.MarkDisconnected(playerId)
+            : _hostLobby.RemovePlayer(playerId);
         if (result.Accepted)
         {
+            if (!_hostLobby.MatchStarted) RemoveReconnectReservation(playerId);
             PublishLobby();
-            NoticeReceived?.Invoke($"Captain {peerId} disconnected; bots resumed their ships");
+            NoticeReceived?.Invoke(_hostLobby.MatchStarted
+                ? $"Captain {peerId} disconnected; bots resumed their ships and the seat is reserved"
+                : $"Captain {peerId} left the lobby");
         }
     }
 
     private void OnConnectedToServer()
     {
         LocalPlayerId = Multiplayer.GetUniqueId().ToString();
-        var request = new JoinRequest(_pendingDisplayName, MultiplayerWire.ProtocolVersion);
+        var request = new JoinRequest(_pendingDisplayName, MultiplayerWire.ProtocolVersion, _reconnectToken);
         RpcId(1, nameof(RequestJoinRpc), MultiplayerWire.Serialize(request));
     }
 
@@ -337,16 +350,40 @@ public sealed partial class MultiplayerManager : Node
         if (!MultiplayerWire.TryDeserialize<JoinRequest>(payload, out var request) || request is null)
         {
             SendNotice(peerId, "Invalid join request");
+            DisconnectRejectedPeer(peerId);
             return;
         }
         if (request.ProtocolVersion != MultiplayerWire.ProtocolVersion)
         {
             SendNotice(peerId, "This build uses a different multiplayer protocol version");
+            DisconnectRejectedPeer(peerId);
+            return;
+        }
+        if (!IsValidReconnectToken(request.ReconnectToken))
+        {
+            SendNotice(peerId, "Invalid reconnect identity");
+            DisconnectRejectedPeer(peerId);
+            return;
+        }
+        if (_hostLobby.MatchStarted)
+        {
+            ReconnectPlayer(peerId, request.ReconnectToken);
+            return;
+        }
+        if (_reconnectPlayers.ContainsKey(request.ReconnectToken))
+        {
+            SendNotice(peerId, "Reconnect identity is already in use");
+            DisconnectRejectedPeer(peerId);
             return;
         }
         var result = _hostLobby.TryAddPlayer(peerId.ToString(), request.DisplayName);
         SendNotice(peerId, result.Message);
-        if (result.Accepted) PublishLobby();
+        if (result.Accepted)
+        {
+            _reconnectPlayers[request.ReconnectToken] = peerId.ToString();
+            PublishLobby();
+        }
+        else DisconnectRejectedPeer(peerId);
     }
 
     [Rpc(MultiplayerApi.RpcMode.Authority, TransferMode = MultiplayerPeer.TransferModeEnum.Reliable)]
@@ -434,5 +471,75 @@ public sealed partial class MultiplayerManager : Node
         var normalized = new string((displayName ?? string.Empty).Where(character => !char.IsControl(character))
             .ToArray()).Trim();
         return string.IsNullOrWhiteSpace(normalized) ? "Captain" : normalized;
+    }
+
+    private void ReconnectPlayer(long peerId, string reconnectToken)
+    {
+        if (_hostLobby is null || _hostSession is null ||
+            !_reconnectPlayers.TryGetValue(reconnectToken, out var previousPlayerId))
+        {
+            SendNotice(peerId, "This match has no reserved seat for that captain");
+            DisconnectRejectedPeer(peerId);
+            return;
+        }
+
+        var newPlayerId = peerId.ToString();
+        var result = _hostLobby.ReconnectPlayer(previousPlayerId, newPlayerId);
+        SendNotice(peerId, result.Message);
+        if (!result.Accepted)
+        {
+            DisconnectRejectedPeer(peerId);
+            return;
+        }
+
+        _reconnectPlayers[reconnectToken] = newPlayerId;
+        var lobby = _hostLobby.Snapshot();
+        var player = lobby.Players.First(item => item.PlayerId.Equals(newPlayerId, StringComparison.Ordinal));
+        _hostSession.AssignPlayer(newPlayerId, player.ShipIds.ToArray());
+        PublishLobby();
+        var start = new MatchStartMessage(lobby, _hostSession.Snapshot());
+        RpcId(peerId, nameof(ReceiveMatchStartRpc), MultiplayerWire.Serialize(start));
+        NoticeReceived?.Invoke($"{player.DisplayName} reconnected on turn {_hostSession.ServerTurn}");
+    }
+
+    private void RemoveReconnectReservation(string playerId)
+    {
+        var token = _reconnectPlayers.FirstOrDefault(pair =>
+            pair.Value.Equals(playerId, StringComparison.Ordinal)).Key;
+        if (!string.IsNullOrEmpty(token)) _reconnectPlayers.Remove(token);
+    }
+
+    private void DisconnectRejectedPeer(long peerId) => Callable.From(() =>
+    {
+        if (_peer?.GetConnectionStatus() == MultiplayerPeer.ConnectionStatus.Connected)
+            _peer.DisconnectPeer((int)peerId);
+    }).CallDeferred();
+
+    private static bool IsValidReconnectToken(string? token) =>
+        Guid.TryParseExact(token, "N", out _);
+
+    private static string LoadOrCreateReconnectToken()
+    {
+        var configured = System.Environment.GetEnvironmentVariable(ReconnectTokenEnvironmentVariable);
+        if (IsValidReconnectToken(configured)) return configured!.ToLowerInvariant();
+
+        var path = ProjectSettings.GlobalizePath($"user://{ReconnectTokenFile}");
+        try
+        {
+            if (File.Exists(path))
+            {
+                var stored = File.ReadAllText(path).Trim();
+                if (IsValidReconnectToken(stored)) return stored.ToLowerInvariant();
+            }
+            var created = Guid.NewGuid().ToString("N");
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.WriteAllText(path, created);
+            return created;
+        }
+        catch (Exception error)
+        {
+            GD.PushWarning($"Could not persist multiplayer reconnect identity: {error.Message}");
+            return Guid.NewGuid().ToString("N");
+        }
     }
 }

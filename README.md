@@ -85,8 +85,8 @@ comparison with Unity and Unreal.
 
 ### Verified desktop build
 
-Download the **[Linux x64 turn-based alpha](https://github.com/karacsonybarni/andromeda-fleet-command/releases/download/v0.2.1-alpha/AndromedaFleetCommand-Linux-x64.tar.gz)**
-or visit the [GitHub release](https://github.com/karacsonybarni/andromeda-fleet-command/releases/tag/v0.2.1-alpha)
+Download the **[Linux x64 turn-based alpha](https://github.com/karacsonybarni/andromeda-fleet-command/releases/download/v0.3.0-alpha/AndromedaFleetCommand-Linux-x64.tar.gz)**
+or visit the [GitHub release](https://github.com/karacsonybarni/andromeda-fleet-command/releases/tag/v0.3.0-alpha)
 for Windows and SHA-256 checksum files. Both packages are launch-tested on their
 native GitHub-hosted operating systems before publication. They are unsigned
 alpha builds; a graphical Windows playtest is still required before public release.
@@ -185,7 +185,9 @@ Press **F6** from the game, enter a captain name, then:
 The host cycles all co-op missions with **Left/Right** (**1–3** remain shortcuts), toggles co-op/PvP with **M**, and starts with
 **Enter**. The host machine resolves the authoritative turn. Each captain plans for their assigned ships and
 presses Space (controller A) when ready; both fleets execute after every connected captain commits. If a client
-leaves, its uncommitted actions are discarded and deterministic pilots retain the ships’ standing orders.
+leaves, its uncommitted actions are discarded and deterministic pilots retain the ships’ standing orders. To
+rejoin, that captain enters the same host address and presses **J** from the same computer; the host restores their
+reserved seat, ships, team, and current turn.
 
 LAN play works with the host's local IP. Internet play currently requires the host to forward **UDP 7777**
 and share their public IP; do not send sensitive information through the game protocol. Steam lobbies,

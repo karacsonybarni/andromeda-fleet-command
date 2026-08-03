@@ -2,12 +2,12 @@ using System.Text.Json;
 
 namespace AndromedaFleetCommand.Core.Multiplayer;
 
-public sealed record JoinRequest(string DisplayName, int ProtocolVersion);
+public sealed record JoinRequest(string DisplayName, int ProtocolVersion, string ReconnectToken = "");
 public sealed record MatchStartMessage(FleetLobbySnapshot Lobby, AuthoritativeSnapshot Snapshot);
 
 public static class MultiplayerWire
 {
-    public const int ProtocolVersion = 2;
+    public const int ProtocolVersion = 3;
     public const int MaximumPayloadCharacters = 262_144;
     private static readonly JsonSerializerOptions Options = new()
     {
