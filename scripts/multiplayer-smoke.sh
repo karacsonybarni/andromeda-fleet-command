@@ -33,11 +33,23 @@ else
   readiness_attempts=900
 fi
 
+run_game() {
+  if [[ "$mode" == "editor" ]]; then
+    timeout "${process_timeout}s" "$game" "${args[@]}"
+  else
+    # Exported Godot .NET builds can stall before managed startup when a
+    # background process has no terminal. A disposable PTY keeps both peers on
+    # the exact same path as an interactive desktop launch.
+    escaped="$(printf '%q ' timeout "${process_timeout}s" "$game" "${args[@]}")"
+    script -qefc "$escaped" /dev/null
+  fi
+}
+
 # Godot's exported .NET host can stall before C# initialization when stdout is a
 # regular file. Keep stdout as a pipe, as it is in the regular release smoke,
 # while tee captures the log without flooding CI output.
 AFC_MULTIPLAYER_SMOKE_ROLE=host AFC_MULTIPLAYER_SMOKE_MODE="$match_mode" HOME="$host_home" \
-  timeout "${process_timeout}s" "$game" "${args[@]}" \
+  run_game \
   </dev/null > >(tee "$host_log" >/dev/null) 2>&1 &
 host_pid=$!
 
@@ -55,7 +67,7 @@ fi
 
 set +e
 AFC_MULTIPLAYER_SMOKE_ROLE=client AFC_MULTIPLAYER_SMOKE_MODE="$match_mode" HOME="$client_home" \
-  timeout "${process_timeout}s" "$game" "${args[@]}" \
+  run_game \
   </dev/null > >(tee "$client_log" >/dev/null) 2>&1
 client_status=$?
 wait "$host_pid"

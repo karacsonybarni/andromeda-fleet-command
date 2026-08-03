@@ -233,14 +233,17 @@ public sealed partial class MultiplayerManager : Node
 
     public void Close(bool notify = true)
     {
-        if (_peer is not null)
-        {
-            _peer.Close();
-            _peer.Dispose();
-            _peer = null;
-        }
+        var peer = _peer;
+        _peer = null;
+        // Detach the SceneTree from ENet before releasing the native peer. Godot
+        // otherwise tries to remove peer signals from an already-disposed object.
         if (Multiplayer.MultiplayerPeer is not OfflineMultiplayerPeer)
             Multiplayer.MultiplayerPeer = new OfflineMultiplayerPeer();
+        if (peer is not null)
+        {
+            peer.Close();
+            peer.Dispose();
+        }
         _hostLobby = null;
         _hostSession = null;
         Lobby = null;
