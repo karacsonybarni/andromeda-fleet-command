@@ -80,16 +80,20 @@ public sealed partial class MultiplayerManager : Node
         Close(false);
         if (port is < 1 or > 65535) return new(false, "Port must be between 1 and 65535");
 
-        var peer = new ENetMultiplayerPeer();
+        var peer = _peer ?? new ENetMultiplayerPeer();
+        var attachPeer = _peer is null;
         var error = peer.CreateServer(port, MaximumClients, 3);
         if (error != Error.Ok)
         {
-            peer.Dispose();
+            if (attachPeer) peer.Dispose();
             return new(false, $"Could not host on UDP port {port}: {error}");
         }
 
-        _peer = peer;
-        Multiplayer.MultiplayerPeer = peer;
+        if (attachPeer)
+        {
+            _peer = peer;
+            Multiplayer.MultiplayerPeer = peer;
+        }
         Port = port;
         LocalPlayerId = Multiplayer.GetUniqueId().ToString();
         _hostLobby = new(LocalPlayerId, displayName, mode);
@@ -106,16 +110,20 @@ public sealed partial class MultiplayerManager : Node
         if (string.IsNullOrWhiteSpace(address)) return new(false, "Enter the host address");
         if (port is < 1 or > 65535) return new(false, "Port must be between 1 and 65535");
 
-        var peer = new ENetMultiplayerPeer();
+        var peer = _peer ?? new ENetMultiplayerPeer();
+        var attachPeer = _peer is null;
         var error = peer.CreateClient(address.Trim(), port, 3);
         if (error != Error.Ok)
         {
-            peer.Dispose();
+            if (attachPeer) peer.Dispose();
             return new(false, $"Could not connect to {address}:{port}: {error}");
         }
 
-        _peer = peer;
-        Multiplayer.MultiplayerPeer = peer;
+        if (attachPeer)
+        {
+            _peer = peer;
+            Multiplayer.MultiplayerPeer = peer;
+        }
         Port = port;
         _pendingDisplayName = NormalizeDisplayName(displayName);
         ChangeState(MultiplayerSessionState.Connecting);
@@ -233,16 +241,11 @@ public sealed partial class MultiplayerManager : Node
 
     public void Close(bool notify = true)
     {
-        var peer = _peer;
-        _peer = null;
-        // Detach the SceneTree from ENet before releasing the native peer. Godot
-        // otherwise tries to remove peer signals from an already-disposed object.
-        if (Multiplayer.HasMultiplayerPeer()) Multiplayer.MultiplayerPeer = null!;
-        if (peer is not null)
-        {
-            peer.Close();
-            peer.Dispose();
-        }
+        // Keep the closed ENet peer attached and reuse it on the next host/join.
+        // Replacing MultiplayerPeer during exported shutdown makes Godot remove
+        // an internal tree_exited connection twice; disposing it first leaves a
+        // dangling native reference. Closing is sufficient to stop all traffic.
+        _peer?.Close();
         _hostLobby = null;
         _hostSession = null;
         Lobby = null;
