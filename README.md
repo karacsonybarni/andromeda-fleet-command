@@ -85,8 +85,8 @@ comparison with Unity and Unreal.
 
 ### Verified desktop build
 
-Download the **[Linux x64 turn-based alpha](https://github.com/karacsonybarni/andromeda-fleet-command/releases/download/v0.3.0-alpha/AndromedaFleetCommand-Linux-x64.tar.gz)**
-or visit the [GitHub release](https://github.com/karacsonybarni/andromeda-fleet-command/releases/tag/v0.3.0-alpha)
+Download the **[Linux x64 mouse-command alpha](https://github.com/karacsonybarni/andromeda-fleet-command/releases/download/v0.4.0-alpha/AndromedaFleetCommand-Linux-x64.tar.gz)**
+or visit the [GitHub release](https://github.com/karacsonybarni/andromeda-fleet-command/releases/tag/v0.4.0-alpha)
 for Windows and SHA-256 checksum files. Both packages are launch-tested on their
 native GitHub-hosted operating systems before publication. They are unsigned
 alpha builds; a graphical Windows playtest is still required before public release.
@@ -127,6 +127,16 @@ powershell -ExecutionPolicy Bypass -File scripts/run.ps1
 
 These are the defaults. Press F10, then K for keyboard actions, or controller Back,
 then Y for controller buttons. Conflicting assignments swap and save immediately.
+
+The complete game can also be operated with the mouse. Click allied ships in the
+battlefield or FRIENDLY FLEET panel to select them, then use the persistent action
+bar to plan maneuvers, attack, activate abilities, type orders, and commit the turn.
+The selected ship is marked on the battlefield, in the fleet list, and above the
+action bar. All menus expose their available actions as clickable buttons.
+
+Every launch opens Captain's Drill. Its persistent **ONE ACTION NOW** toast shows
+exactly one required action and remains visible until that action is completed.
+Choose **Tutorial** from the command menu at any time to restart the drill.
 
 - 1–4 or Tab: switch controlled ship
 - W / S: plot a forward / reverse burn for the selected ship
