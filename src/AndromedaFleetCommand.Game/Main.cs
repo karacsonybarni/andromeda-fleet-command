@@ -3523,17 +3523,19 @@ public sealed partial class Main : Node2D
             DrawCenteredLabel(step.Action switch
             {
                 TutorialAction.SwitchShip =>
-                    $"{BindingLabel(GameActionIds.SwitchShip)}  /  {GamepadButtonLabel(GamepadActionIds.SwitchShip)}",
+                    $"CLICK SHIP  /  {BindingLabel(GameActionIds.SwitchShip)}  /  " +
+                    $"{GamepadButtonLabel(GamepadActionIds.SwitchShip)}",
                 TutorialAction.PlotManeuver =>
-                    $"{BindingLabel(GameActionIds.Thrust)}{BindingLabel(GameActionIds.TurnLeft)}" +
-                    $"{BindingLabel(GameActionIds.Reverse)}{BindingLabel(GameActionIds.TurnRight)}  /  STICK",
+                    $"CLICK ACTION  /  {BindingLabel(GameActionIds.Thrust)}" +
+                    $"{BindingLabel(GameActionIds.TurnLeft)}{BindingLabel(GameActionIds.Reverse)}" +
+                    $"{BindingLabel(GameActionIds.TurnRight)}",
                 TutorialAction.IssueOrder =>
-                    $"{BindingLabel(GameActionIds.Command)}  /  {GamepadButtonLabel(GamepadActionIds.Voice)}",
+                    $"CLICK TYPE ORDER  /  {BindingLabel(GameActionIds.Command)}",
                 TutorialAction.ActivateAbility =>
-                    $"{BindingLabel(GameActionIds.Ability)}  /  {GamepadButtonLabel(GamepadActionIds.Ability)}",
+                    $"CLICK ABILITY  /  {BindingLabel(GameActionIds.Ability)}",
                 _ =>
-                    $"{BindingLabel(GameActionIds.EndTurn)}  /  {GamepadButtonLabel(GamepadActionIds.EndTurn)}"
-            }, x + 107, 490, 14, color, 190);
+                    $"CLICK COMMIT  /  {BindingLabel(GameActionIds.EndTurn)}"
+            }, x + 107, 490, 11, color, 190);
             DrawCenteredLabel(step.Purpose, x + 107, 538, 12, new Color("9fc5d6"), 190);
         }
 
