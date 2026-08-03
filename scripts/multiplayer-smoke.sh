@@ -50,7 +50,7 @@ run_game() {
 # while tee captures the log without flooding CI output.
 AFC_MULTIPLAYER_SMOKE_ROLE=host AFC_MULTIPLAYER_SMOKE_MODE="$match_mode" HOME="$host_home" \
   run_game \
-  </dev/null > >(tee "$host_log" >/dev/null) 2>&1 &
+  </dev/null >"$host_log" 2>&1 &
 host_pid=$!
 
 for _ in $(seq 1 "$readiness_attempts"); do
@@ -68,7 +68,7 @@ fi
 set +e
 AFC_MULTIPLAYER_SMOKE_ROLE=client AFC_MULTIPLAYER_SMOKE_MODE="$match_mode" HOME="$client_home" \
   run_game \
-  </dev/null > >(tee "$client_log" >/dev/null) 2>&1
+  </dev/null >"$client_log" 2>&1
 client_status=$?
 wait "$host_pid"
 host_status=$?
@@ -80,5 +80,11 @@ test "$host_status" -eq 0
 test "$client_status" -eq 0
 grep -q "AFC_MP_HOST_PASS mode=$expected_mode" "$host_log"
 grep -q "AFC_MP_CLIENT_PASS mode=$expected_mode" "$client_log"
-! grep -qE "ERROR:|Unhandled exception|InvalidOperationException" "$host_log" "$client_log"
-! grep -qE "above the MTU|higher packet loss" "$host_log" "$client_log"
+if grep -qE "ERROR:|Unhandled exception|InvalidOperationException" "$host_log" "$client_log"; then
+  echo "Multiplayer smoke emitted an engine or managed error." >&2
+  exit 1
+fi
+if grep -qE "above the MTU|higher packet loss" "$host_log" "$client_log"; then
+  echo "Multiplayer smoke emitted a packet-size warning." >&2
+  exit 1
+fi
