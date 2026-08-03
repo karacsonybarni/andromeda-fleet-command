@@ -33,12 +33,24 @@ else
   readiness_attempts=900
 fi
 
+run_game() {
+  if [[ "$mode" == "editor" ]]; then
+    timeout "${process_timeout}s" "$game" "${args[@]}"
+  else
+    # Exported Godot .NET builds can stall before managed startup when a
+    # background process has no terminal. A disposable PTY keeps both peers on
+    # the exact same path as an interactive desktop launch.
+    escaped="$(printf '%q ' timeout "${process_timeout}s" "$game" "${args[@]}")"
+    script -qefc "$escaped" /dev/null
+  fi
+}
+
 # Godot's exported .NET host can stall before C# initialization when stdout is a
 # regular file. Keep stdout as a pipe, as it is in the regular release smoke,
 # while tee captures the log without flooding CI output.
 AFC_MULTIPLAYER_SMOKE_ROLE=host AFC_MULTIPLAYER_SMOKE_MODE="$match_mode" HOME="$host_home" \
-  timeout "${process_timeout}s" "$game" "${args[@]}" \
-  </dev/null > >(tee "$host_log" >/dev/null) 2>&1 &
+  run_game \
+  </dev/null >"$host_log" 2>&1 &
 host_pid=$!
 
 for _ in $(seq 1 "$readiness_attempts"); do
@@ -55,8 +67,8 @@ fi
 
 set +e
 AFC_MULTIPLAYER_SMOKE_ROLE=client AFC_MULTIPLAYER_SMOKE_MODE="$match_mode" HOME="$client_home" \
-  timeout "${process_timeout}s" "$game" "${args[@]}" \
-  </dev/null > >(tee "$client_log" >/dev/null) 2>&1
+  run_game \
+  </dev/null >"$client_log" 2>&1
 client_status=$?
 wait "$host_pid"
 host_status=$?
@@ -68,5 +80,11 @@ test "$host_status" -eq 0
 test "$client_status" -eq 0
 grep -q "AFC_MP_HOST_PASS mode=$expected_mode" "$host_log"
 grep -q "AFC_MP_CLIENT_PASS mode=$expected_mode" "$client_log"
-! grep -qE "ERROR:|Unhandled exception|InvalidOperationException" "$host_log" "$client_log"
-! grep -qE "above the MTU|higher packet loss" "$host_log" "$client_log"
+if grep -qE "ERROR:|Unhandled exception|InvalidOperationException" "$host_log" "$client_log"; then
+  echo "Multiplayer smoke emitted an engine or managed error." >&2
+  exit 1
+fi
+if grep -qE "above the MTU|higher packet loss" "$host_log" "$client_log"; then
+  echo "Multiplayer smoke emitted a packet-size warning." >&2
+  exit 1
+fi

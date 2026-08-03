@@ -85,8 +85,8 @@ comparison with Unity and Unreal.
 
 ### Verified desktop build
 
-Download the **[Linux x64 turn-based alpha](https://github.com/karacsonybarni/andromeda-fleet-command/releases/download/v0.2.0-alpha/AndromedaFleetCommand-Linux-x64.tar.gz)**
-or visit the [GitHub release](https://github.com/karacsonybarni/andromeda-fleet-command/releases/tag/v0.2.0-alpha)
+Download the **[Linux x64 turn-based alpha](https://github.com/karacsonybarni/andromeda-fleet-command/releases/download/v0.2.1-alpha/AndromedaFleetCommand-Linux-x64.tar.gz)**
+or visit the [GitHub release](https://github.com/karacsonybarni/andromeda-fleet-command/releases/tag/v0.2.1-alpha)
 for Windows and SHA-256 checksum files. Both packages are launch-tested on their
 native GitHub-hosted operating systems before publication. They are unsigned
 alpha builds; a graphical Windows playtest is still required before public release.

@@ -117,6 +117,7 @@ public sealed partial class Main : Node2D
     private bool _multiplayerSmokeClient;
     private bool _multiplayerSmokePassed;
     private bool _multiplayerSmokeSnapshotSeen;
+    private bool _multiplayerSmokeShutdownQueued;
     private MultiplayerMode _multiplayerSmokeMode = MultiplayerMode.Cooperative;
 
     public override void _Ready()
@@ -1055,8 +1056,7 @@ public sealed partial class Main : Node2D
         RefreshMultiplayerControlVisibility();
         if (_multiplayerSmokeHost && _multiplayerSmokePassed && lobby.MatchStarted && lobby.Players.Count < 2)
         {
-            _multiplayer?.Close(false);
-            GetTree().Quit();
+            QueueMultiplayerSmokeShutdown();
             return;
         }
         if (_multiplayerSmokeHost && !lobby.MatchStarted && lobby.Players.Count >= 2)
@@ -1118,17 +1118,24 @@ public sealed partial class Main : Node2D
                 GD.Print($"AFC_MP_{role}_PASS mode={_multiplayerSmokeMode}" +
                          $" turn={snapshot.ServerTurn} ships={_multiplayer!.LocalShipIds.Count}");
                 if (_multiplayerSmokeHost) return;
-                Callable.From(() =>
-                {
-                    _multiplayer?.Close(false);
-                    GetTree().Quit();
-                }).CallDeferred();
+                QueueMultiplayerSmokeShutdown();
             }
             else
             {
                 AdvanceMultiplayerSmoke(snapshot.ServerTurn);
             }
         }
+    }
+
+    private void QueueMultiplayerSmokeShutdown()
+    {
+        if (_multiplayerSmokeShutdownQueued) return;
+        _multiplayerSmokeShutdownQueued = true;
+        Callable.From(() =>
+        {
+            _multiplayer?.Close(false);
+            GetTree().Quit();
+        }).CallDeferred();
     }
 
     private void AdvanceMultiplayerSmoke(int turn)
